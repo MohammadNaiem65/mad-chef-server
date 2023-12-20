@@ -1,10 +1,16 @@
-// external dependencies
+// external imports
 const express = require('express');
+const mongoose = require('mongoose');
+const { initializeApp, cert } = require('firebase-admin/app');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
-// create instance
+// internal imports
+// ? TODO: download firebase service account configuration and name firebase.config.json
+const serviceAccountConfig = require('./firebase.config.json');
+
+// create app instance
 const app = express();
 
 const port = process.env.PORT || 3999;
@@ -13,6 +19,17 @@ const port = process.env.PORT || 3999;
 app.use(express.json());
 app.use(cors());
 app.use(cookieParser(process.env.COOKIE_SECRET));
+
+// connect to MongoDB
+mongoose
+	.connect(process.env.MONGODB_CONNECTION_STRING)
+	.then(() => console.log('Connected to database'))
+	.catch((err) => console.log(err));
+
+// connect to Firebase
+initializeApp({
+	credential: cert(serviceAccountConfig),
+});
 
 // request handlers
 app.get('/', (req, res) => {
