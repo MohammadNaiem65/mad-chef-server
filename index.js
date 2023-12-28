@@ -9,6 +9,7 @@ require('dotenv').config();
 // internal imports
 // ? TODO: download firebase service account configuration and name firebase.config.json
 const serviceAccountConfig = require('./firebase.config.json');
+const authHandler = require('./handlers/authHandler');
 
 // create app instance
 const app = express();
@@ -17,7 +18,7 @@ const port = process.env.PORT || 3999;
 
 // request parsers
 app.use(express.json());
-app.use(cors());
+app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 
 // connect to MongoDB
@@ -32,9 +33,7 @@ initializeApp({
 });
 
 // request handlers
-app.get('/', (req, res) => {
-	console.log('object');
-});
+app.use('/auth', authHandler);
 
 // listen app
 app.listen(port, () => {
