@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema(
 			enum: ['admin', 'instructor', 'student'],
 			default: 'student',
 		},
+		plan: {
+			type: String,
+			enum: ['basic', 'pro'],
+			default: 'basic',
+		},
 		img: String,
 	},
 	{
