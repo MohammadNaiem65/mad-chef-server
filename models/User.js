@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema(
 			enum: ['admin', 'instructor', 'student'],
 			default: 'student',
 		},
-		plan: {
+		pkg: {
 			type: String,
 			enum: ['basic', 'pro'],
 			default: 'basic',

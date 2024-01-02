@@ -27,6 +27,7 @@ async function authenticate(req, res) {
 			userEmail: email,
 			userId: decodedToken?._id,
 			role: decodedToken?.role,
+			pkg: decodedToken?.pkg,
 		};
 
 		// if user doesn't exist - save user data to database
@@ -41,14 +42,16 @@ async function authenticate(req, res) {
 				img: picture,
 			});
 
-			// store user id and role
+			// store user id role and and package pkg
 			userData.userId = newUser._id;
 			userData.role = newUser.role;
+			userData.pkg = newUser.pkg;
 
 			// save user id and role to firebase
 			await auth.setCustomUserClaims(uid, {
 				_id: newUser._id,
 				role: newUser.role,
+				pkg: newUser.pkg,
 			});
 		}
 
@@ -118,4 +121,16 @@ async function authenticate(req, res) {
 	}
 }
 
-module.exports = { authenticate };
+async function logout(req, res) {
+	const userId = req.user.userId;
+
+	try {
+		await RefreshToken.deleteOne({ userId });
+		res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME);
+		res.json({ msg: 'Logout successful' });
+	} catch (error) {
+		res.status(500).json({ msg: 'Something went wrong. Try again later' });
+	}
+}
+
+module.exports = { authenticate, logout };

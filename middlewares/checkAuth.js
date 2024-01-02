@@ -10,14 +10,13 @@ const checkAuth = (req, res, next) => {
 	// verify the token
 	jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
 		if (!user) {
-			return res.status(403).json({ msg: err.message });
+			return res.status(403).json({ data: err.message });
 		}
 
 		// save user in request body
 		req.user = user;
+		next();
 	});
-
-	next();
 };
 
 module.exports = checkAuth;

@@ -2,16 +2,13 @@
 const express = require('express');
 
 // internal imports
-const { authenticate } = require('../controllers/authController');
+const { authenticate, logout } = require('../controllers/authController');
+const checkAuth = require('../middlewares/checkAuth');
 
 // create router instance
 const router = express.Router();
 
 router.post('/', authenticate);
-router.post('/test', (req, res) => {
-	console.log('from test');
-	console.log(req.headers);
-	console.log(req.body);
-});
+router.delete('/logout', checkAuth, logout);
 
 module.exports = router;
