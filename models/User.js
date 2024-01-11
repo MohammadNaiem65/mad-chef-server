@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
 		},
 		role: {
 			type: String,
-			enum: ['admin', 'instructor', 'student'],
+			enum: ['admin', 'chef', 'student'],
 			default: 'student',
 		},
 		pkg: {
@@ -29,6 +29,14 @@ const userSchema = new mongoose.Schema(
 			default: 'basic',
 		},
 		img: String,
+		favorites: {
+			type: [mongoose.SchemaTypes.ObjectId],
+			ref: 'Recipe',
+		},
+		consults: {
+			type: [mongoose.SchemaTypes.ObjectId],
+			ref: 'Consult',
+		},
 	},
 	{
 		timestamps: true,
