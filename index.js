@@ -9,7 +9,10 @@ require('dotenv').config();
 // internal imports
 // ? TODO: download firebase service account configuration and name firebase.config.json
 const serviceAccountConfig = require('./firebase.config.json');
+
+// request handlers
 const authHandler = require('./handlers/authHandler');
+const userHandler = require('./handlers/userHandler');
 
 // create app instance
 const app = express();
@@ -34,6 +37,7 @@ initializeApp({
 
 // request handlers
 app.use('/auth', authHandler);
+app.use('/user', userHandler);
 
 // listen app
 app.listen(port, () => {
