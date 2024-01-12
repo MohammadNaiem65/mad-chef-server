@@ -2,13 +2,18 @@
 const express = require('express');
 
 // internal imports
-const { authenticate, logout } = require('../controllers/authController');
+const {
+	authenticate,
+	logout,
+	reAuthenticate,
+} = require('../controllers/authController');
 const checkAuth = require('../middlewares/checkAuth');
 
 // create router instance
 const router = express.Router();
 
 router.post('/', authenticate);
-router.delete('/logout', checkAuth, logout);
+router.get('/refresh-token', reAuthenticate);
+router.delete('/logout', logout);
 
 module.exports = router;

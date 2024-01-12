@@ -81,13 +81,10 @@ async function authenticate(req, res) {
 		});
 
 		// send response to user
-		res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+		res.cookie('jwt', refreshToken, {
 			maxAge: 30 * 24 * 60 * 60 * 1000,
 			httpOnly: true,
-			signed: true,
-			secure: true,
-		});
-		res.json({ msg: 'Successful', data: { user: userData, accessToken } });
+		}).json({ msg: 'Successful', data: { user: userData, accessToken } });
 	} catch (err) {
 		// if the firebase idToken is expired
 		if (err.code === 'auth/id-token-expired') {
@@ -121,16 +118,84 @@ async function authenticate(req, res) {
 	}
 }
 
+async function reAuthenticate(req, res) {
+	const cookies = req.cookies;
+
+	// if cookie not found - send unauthorized response
+	if (!cookies || !cookies?.jwt) return res.sendStatus(401);
+
+	const userRefreshToken = cookies?.jwt;
+
+	const storedToken = await RefreshToken.findOne({ token: userRefreshToken });
+
+	// if token not found - send forbidden response
+	if (!storedToken) {
+		res.clearCookie('jwt');
+		return res.sendStatus(403).json({ data: err.message });
+	}
+
+	jwt.verify(
+		userRefreshToken,
+		process.env.REFRESH_TOKEN_SECRET,
+		async (err, decodedToken) => {
+			if (err && err.message === 'jwt expired') {
+				await RefreshToken.deleteOne({ _id: storedToken._id });
+				res.clearCookie('jwt');
+				return res.sendStatus(403);
+			} else {
+				// store user data
+				const userData = {
+					userEmail: decodedToken.userEmail,
+					userId: decodedToken.userId,
+					role: decodedToken.role,
+					pkg: decodedToken.pkg,
+				};
+
+				// generate access and refresh tokens
+				const accessToken = jwt.sign(
+					userData,
+					process.env.ACCESS_TOKEN_SECRET,
+					{ expiresIn: '1h' }
+				);
+
+				const refreshToken = jwt.sign(
+					userData,
+					process.env.REFRESH_TOKEN_SECRET,
+					{ expiresIn: '30 days' }
+				);
+
+				// save refresh token to database and delete one if an exists for the user
+				await RefreshToken.deleteOne({ _id: storedToken._id });
+				await RefreshToken.create({
+					userId: userData.userId,
+					token: refreshToken,
+				});
+
+				// send response to user
+				res.cookie('jwt', refreshToken, {
+					maxAge: 30 * 24 * 60 * 60 * 1000,
+					httpOnly: true,
+					signed: true,
+					secure: true,
+				}).json({
+					msg: 'Successful',
+					data: { accessToken },
+				});
+			}
+		}
+	);
+}
+
 async function logout(req, res) {
 	const userId = req.user.userId;
 
 	try {
 		await RefreshToken.deleteOne({ userId });
-		res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME);
+		res.clearCookie('jwt');
 		res.json({ msg: 'Logout successful' });
 	} catch (error) {
 		res.status(500).json({ msg: 'Something went wrong. Try again later' });
 	}
 }
 
-module.exports = { authenticate, logout };
+module.exports = { authenticate, reAuthenticate, logout };
