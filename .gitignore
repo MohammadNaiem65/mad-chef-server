@@ -1,4 +1,6 @@
 node_modules
 .env
 
-models
+models/Chef.js
+models/Consult.js
+models/Recipe.js

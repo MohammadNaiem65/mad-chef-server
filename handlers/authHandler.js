@@ -14,6 +14,6 @@ const router = express.Router();
 
 router.post('/', authenticate);
 router.get('/refresh-token', reAuthenticate);
-router.delete('/logout', logout);
+router.delete('/logout', checkAuth, logout);
 
 module.exports = router;
