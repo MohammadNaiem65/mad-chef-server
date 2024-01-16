@@ -65,26 +65,30 @@ async function handleUserRolePromotion(req, res) {
 				} else {
 					requestedDocument.status = 'accepted';
 
-					const newChef = new Chef({
-						name,
-						email,
-						emailVerified,
-						img,
-						bio: 'Best cook in the town',
-						yearsOfExperience: 3,
-					});
+					let roleUpgradedUser;
+
+					if (requestedDocument.role === 'chef') {
+						roleUpgradedUser = new Chef({
+							name,
+							email,
+							emailVerified,
+							img,
+							bio: 'Best cook in the town',
+							yearsOfExperience: 3,
+						});
+					}
 
 					// update firebase custom claims
 					await admin.auth().setCustomUserClaims(firebaseId, {
-						_id: newChef._id,
-						role: 'chef',
+						_id: roleUpgradedUser._id,
+						role: roleUpgradedUser.role,
 					});
 
 					// delete User document from database
 					await User.findByIdAndDelete(userId);
 
 					// save Chef document
-					await newChef.save();
+					await roleUpgradedUser.save();
 
 					// update RolePromotionApplicants document
 					await requestedDocument.save();
