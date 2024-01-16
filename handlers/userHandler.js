@@ -6,13 +6,19 @@ const checkAuth = require('../middlewares/checkAuth');
 const {
 	getUser,
 	applyToBeChef,
-	promoteUserToChef,
+	handleUserRolePromotion,
 } = require('../controllers/userController');
 
 const router = express.Router();
 
 router.get('/:id', checkAuth, getUser);
 
-router.post('/:id/apply-to-be-chef', applyToBeChef);
+router.post('/:id/apply-to-be-chef', checkAuth, applyToBeChef);
+
+router.post(
+	'/:id/requests/:requestId/action',
+	checkAuth,
+	handleUserRolePromotion
+);
 
 module.exports = router;

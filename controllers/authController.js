@@ -26,6 +26,7 @@ async function authenticate(req, res) {
 		const userData = {
 			userEmail: email,
 			userId: decodedToken?._id,
+			firebaseId: uid,
 			role: decodedToken?.role,
 			pkg: decodedToken?.pkg,
 		};
@@ -187,7 +188,7 @@ async function reAuthenticate(req, res) {
 }
 
 async function logout(req, res) {
-	const userId = req.user.userId;
+	const userId = req.params.userId;
 
 	try {
 		await RefreshToken.deleteOne({ userId });

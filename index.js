@@ -43,7 +43,7 @@ initializeApp({
 
 // request handlers
 app.use('/auth', authHandler);
-app.use('/user', userHandler);
+app.use('/users', userHandler);
 
 // listen app
 app.listen(port, () => {
