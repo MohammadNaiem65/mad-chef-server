@@ -67,6 +67,7 @@ async function handleUserRolePromotion(req, res) {
 
 					let roleUpgradedUser;
 
+					// if the requested role is Chef - create new Chef document 
 					if (requestedDocument.role === 'chef') {
 						roleUpgradedUser = new Chef({
 							name,
@@ -76,6 +77,9 @@ async function handleUserRolePromotion(req, res) {
 							bio: 'Best cook in the town',
 							yearsOfExperience: 3,
 						});
+
+						// delete User document from database
+						await User.findByIdAndDelete(userId);
 					}
 
 					// update firebase custom claims
@@ -83,9 +87,6 @@ async function handleUserRolePromotion(req, res) {
 						_id: roleUpgradedUser._id,
 						role: roleUpgradedUser.role,
 					});
-
-					// delete User document from database
-					await User.findByIdAndDelete(userId);
 
 					// save Chef document
 					await roleUpgradedUser.save();
