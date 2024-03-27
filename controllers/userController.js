@@ -5,6 +5,15 @@ const User = require('../models/User');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 
+// utility functions
+function createRolePromotionDoc(id, role) {
+	return RolePromotionApplicants.create({
+		usersId: id,
+		role: role,
+	});
+}
+
+// middleware functions
 async function getUser(req, res) {
 	const id = req.params.id;
 
@@ -24,10 +33,8 @@ async function getUser(req, res) {
 async function applyToBeChef(req, res) {
 	const id = req.params.id;
 
-	const result = await RolePromotionApplicants.create({
-		usersId: id,
-		role: 'chef',
-	});
+	const result = await createRolePromotionDoc(id, 'chef');
+	console.log(result);
 
 	res.json({ msg: 'Successful', data: result });
 }
@@ -67,7 +74,7 @@ async function handleUserRolePromotion(req, res) {
 
 					let roleUpgradedUser;
 
-					// if the requested role is Chef - create new Chef document 
+					// if the requested role is Chef - create new Chef document
 					if (requestedDocument.role === 'chef') {
 						roleUpgradedUser = new Chef({
 							name,
