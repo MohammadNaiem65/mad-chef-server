@@ -6,6 +6,18 @@ const jwt = require('jsonwebtoken');
 const User = require('./../models/User');
 const RefreshToken = require('./../models/RefreshToken');
 
+/**
+ * @description Generates a JWT token using the provided data, secret key, and options.
+ *
+ * @param {Object} data - An object containing the data to be encoded in the token.
+ * @param {string} secret - The secret key used for signing the token.
+ * @param {Object} [options={}] - Additional options for the JWT token.
+ * @returns {string} - The generated JWT token.
+ */
+function generateToken(data, secret, options = {}) {
+	return jwt.sign(data, secret, options);
+}
+
 async function authenticate(req, res) {
 	// get firebase idToken as userToken
 	const authToken = req.headers.authorization;
@@ -14,7 +26,7 @@ async function authenticate(req, res) {
 	// if token is unavailable - send error
 	if (!userToken) return res.sendStatus(401);
 
-	// get a auth instance
+	// create an auth instance
 	const auth = getAuth();
 
 	try {
@@ -31,7 +43,7 @@ async function authenticate(req, res) {
 			pkg: decodedToken?.pkg,
 		};
 
-		// if user doesn't exist - save user data to database
+		// if user doesn't exist - save user data to database (for registration)
 		if (!decodedToken?._id || !decodedToken?.role) {
 			// save user to database
 			await User.init();
@@ -56,19 +68,20 @@ async function authenticate(req, res) {
 			});
 		}
 
-		// if it's only a registration request
+		// if it's only a registration request - send a successful response
 		if (req.body?.reqType == 'registration') {
 			return res.status(201).json({ msg: 'Registration successful' });
 		}
 
+		// for login purpose - send access and refresh token
 		// generate access and refresh tokens
-		const accessToken = jwt.sign(
+		const accessToken = generateToken(
 			userData,
 			process.env.ACCESS_TOKEN_SECRET,
 			{ expiresIn: '1h' }
 		);
 
-		const refreshToken = jwt.sign(
+		const refreshToken = generateToken(
 			userData,
 			process.env.REFRESH_TOKEN_SECRET,
 			{ expiresIn: '30 days' }
@@ -82,9 +95,11 @@ async function authenticate(req, res) {
 		});
 
 		// send response to user
-		res.cookie('jwt', refreshToken, {
+		res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
 			maxAge: 30 * 24 * 60 * 60 * 1000,
 			httpOnly: true,
+			secure: process.env.NODE_ENV !== 'development',
+			sameSite: 'None',
 		}).json({ msg: 'Successful', data: { user: userData, accessToken } });
 	} catch (err) {
 		// if the firebase idToken is expired
@@ -135,6 +150,7 @@ async function reAuthenticate(req, res) {
 		return res.sendStatus(403).json({ data: err.message });
 	}
 
+	// verify the token
 	jwt.verify(
 		userRefreshToken,
 		process.env.REFRESH_TOKEN_SECRET,
@@ -153,13 +169,13 @@ async function reAuthenticate(req, res) {
 				};
 
 				// generate access and refresh tokens
-				const accessToken = jwt.sign(
+				const accessToken = generateToken(
 					userData,
 					process.env.ACCESS_TOKEN_SECRET,
 					{ expiresIn: '1h' }
 				);
 
-				const refreshToken = jwt.sign(
+				const refreshToken = generateToken(
 					userData,
 					process.env.REFRESH_TOKEN_SECRET,
 					{ expiresIn: '30 days' }
@@ -173,14 +189,18 @@ async function reAuthenticate(req, res) {
 				});
 
 				// send response to user
-				res.cookie('jwt', refreshToken, {
-					maxAge: 30 * 24 * 60 * 60 * 1000,
-					httpOnly: true,
-					signed: true,
-					secure: true,
-				}).json({
+				res.cookie(
+					process.env.REFRESH_TOKEN_COOKIE_NAME,
+					refreshToken,
+					{
+						maxAge: 30 * 24 * 60 * 60 * 1000,
+						httpOnly: true,
+						secure: process.env.NODE_ENV !== 'development',
+						sameSite: 'None',
+					}
+				).json({
 					msg: 'Successful',
-					data: { accessToken },
+					data: { user: userData, accessToken },
 				});
 			}
 		}
