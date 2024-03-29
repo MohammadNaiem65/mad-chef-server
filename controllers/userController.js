@@ -6,6 +6,26 @@ const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 
 // utility functions
+/**
+ * @description This function is used validate if a id is a valid mongodb id
+ *
+ * @param {string} id - mongodb id string
+ * @returns - if the id is invalid, returns an 400 error
+ */
+function validateMongoDBId(id) {
+	if (!mongoose.Types.ObjectId.isValid(id)) {
+		// Send a 400 response indicating the ID is invalid
+		return res.status(400).send({ error: 'Invalid MongoDB ID provided.' });
+	}
+}
+
+/**
+ * @description Creates a new mongodb document of promoting the role of a user
+ *
+ * @param {string} id
+ * @param {string} role
+ * @returns {object}
+ */
 function createRolePromotionDoc(id, role) {
 	return RolePromotionApplicants.create({
 		usersId: id,
@@ -17,24 +37,20 @@ function createRolePromotionDoc(id, role) {
 async function getUser(req, res) {
 	const id = req.params.id;
 
-	if (!mongoose.Types.ObjectId.isValid(id)) {
-		res.status(400).json({
-			error: {
-				msg: 'Invalid id provided',
-			},
-		});
-	} else {
-		const user = await User.findOne({ _id: id });
+	// check if the id is valid
+	validateMongoDBId(id);
 
-		res.json({ msg: 'Successful', data: user });
-	}
+	const user = await User.findOne({ _id: id });
+	res.json({ msg: 'Successful', data: user });
 }
 
 async function applyToBeChef(req, res) {
 	const id = req.params.id;
 
+	// Check if the id is valid
+	validateMongoDBId(id);
+
 	const result = await createRolePromotionDoc(id, 'chef');
-	console.log(result);
 
 	res.json({ msg: 'Successful', data: result });
 }
