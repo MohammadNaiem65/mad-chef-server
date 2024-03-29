@@ -12,7 +12,7 @@ const checkAuth = require('../middlewares/checkAuth');
 // create router instance
 const router = express.Router();
 
-router.post('/', authenticate);
+router.post(['/', '/login'], authenticate);
 router.get('/refresh-token', reAuthenticate);
 router.delete('/logout/:userId', logout);
 

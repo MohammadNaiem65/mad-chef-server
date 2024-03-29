@@ -11,10 +11,8 @@ const {
 
 const router = express.Router();
 
-router.get('/:id', checkAuth, getUser);
-
+router.get(['/user/:id', '/:id'], checkAuth, getUser);
 router.post('/:id/apply-to-be-chef', checkAuth, applyToBeChef);
-
 router.post(
 	'/:id/requests/:requestId/action',
 	checkAuth,

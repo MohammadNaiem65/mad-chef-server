@@ -41,7 +41,7 @@ initializeApp({
 	credential: cert(serviceAccountConfig),
 });
 
-// request handlers
+// request endpoints
 app.use('/auth', authHandler);
 app.use('/users', userHandler);
 
