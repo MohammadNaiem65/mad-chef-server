@@ -14,6 +14,7 @@ const serviceAccountConfig = require('./firebase.config.json');
 const authHandler = require('./handlers/authHandler');
 const userHandler = require('./handlers/userHandler');
 const chefHandler = require('./handlers/chefHandler');
+const consultHandler = require('./handlers/consultHandler');
 
 // create app instance
 const app = express();
@@ -46,6 +47,7 @@ initializeApp({
 app.use('/auth', authHandler);
 app.use('/users', userHandler);
 app.use('/chefs', chefHandler);
+app.use('/consults', consultHandler);
 
 // listen app
 app.listen(port, () => {
