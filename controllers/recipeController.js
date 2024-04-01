@@ -43,4 +43,23 @@ async function getRecipe(req, res) {
 	}
 }
 
-module.exports = { getRecipe };
+async function postRecipe(req, res) {
+	const { userId, role } = req.user;
+	const { title, ingredients, method, img, author } = req.body;
+
+	if (userId && role === 'chef') {
+		const doc = await Recipe.create({
+			title,
+			ingredients,
+			method,
+			img,
+			author,
+		});
+
+		res.json({ message: 'Successful', data: doc });
+	} else {
+		res.status(401).json({ message: 'Only chef can post recipe.' });
+	}
+}
+
+module.exports = { getRecipe, postRecipe };
