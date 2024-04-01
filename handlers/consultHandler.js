@@ -6,6 +6,6 @@ const { createConsultDoc } = require('../controllers/consultController');
 const router = express.Router();
 
 // endpoints
-router.post(['/', '/consult'], createConsultDoc);
+router.post(['/consult', '/'], checkAuth, createConsultDoc);
 
 module.exports = router;
