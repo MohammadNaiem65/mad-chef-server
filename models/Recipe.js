@@ -1,9 +1,4 @@
-const { default: mongoose } = require('mongoose');
-
-const ratingSchema = new mongoose.Schema({
-	userId: mongoose.Schema.Types.ObjectId,
-	rate: Number,
-});
+const mongoose = require('mongoose');
 
 const recipeSchema = new mongoose.Schema(
 	{
@@ -26,9 +21,7 @@ const recipeSchema = new mongoose.Schema(
 		like: {
 			type: Number,
 			default: 0,
-			required: true,
 		},
-		rating: [ratingSchema],
 		author: {
 			type: mongoose.SchemaTypes.ObjectId,
 			ref: 'Chef',
