@@ -7,7 +7,7 @@ const checkAuth = require('../middlewares/checkAuth');
 // create router instance
 const router = express.Router();
 
-router.get('/', checkAuth, getChefs);
-router.get(['/chef/:chefId', '/:chefId'], checkAuth, getChef);
+router.get('/', getChefs);
+router.get(['/chef/:chefId', '/:chefId'], getChef);
 
 module.exports = router;
