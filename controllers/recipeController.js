@@ -36,7 +36,9 @@ async function getRecipe(req, res) {
 		if (recipe?._id) {
 			const result = {
 				...recipe?._doc,
-				rating: rating?.length ? rating[0]?.rating : null,
+				rating: rating?.length
+					? Number.parseFloat(rating[0]?.rating.toFixed(1))
+					: null,
 				totalRating: rating?.length ? rating[0]?.totalCount : null,
 			};
 
