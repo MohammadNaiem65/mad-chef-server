@@ -26,12 +26,19 @@ async function getRecipe(req, res) {
 					rating: {
 						$avg: '$rating',
 					},
+					totalCount: {
+						$sum: 1,
+					},
 				},
 			},
 		]);
 
-		if (recipe?._id && rating[0]?.rating) {
-			const result = { ...recipe?._doc, rating: rating[0]?.rating };
+		if (recipe?._id) {
+			const result = {
+				...recipe?._doc,
+				rating: rating?.length ? rating[0]?.rating : null,
+				totalRating: rating?.length ? rating[0]?.totalCount : null,
+			};
 
 			res.json(result);
 		} else {
