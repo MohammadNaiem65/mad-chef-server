@@ -5,6 +5,7 @@ const getCurrPage = require('../utility/getCurrPage');
 
 const Chef = require('../models/Chef');
 const ChefReview = require('../models/ChefReview');
+const createProjectionObject = require('../utility/createProjectionObject');
 
 async function getChef(req, res) {
 	const { chefId } = req.params;
@@ -55,16 +56,42 @@ async function getChef(req, res) {
 }
 
 async function getChefs(req, res) {
-	const { p, page = 0, l, limit = process.env.CHEFS_PER_PAGE } = req.query;
+	const {
+		p,
+		page = 0,
+		l,
+		limit = process.env.CHEFS_PER_PAGE,
+		sort = 'updatedAt',
+		order = 'desc',
+		include = '',
+		exclude = '',
+	} = req.query;
 
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
 
+	// Initialize projection as an empty object
+	let projection = {};
+	const sortObj = {};
+
+	// Only create projection objects if include or exclude is not an empty string
+	if (include) {
+		const includesObj = createProjectionObject(include, {}, 1);
+		projection = { ...projection, ...includesObj };
+	}
+	if (exclude) {
+		const excludesObj = createProjectionObject(exclude, {}, 0);
+		projection = { ...projection, ...excludesObj };
+	}
+	// set sort order field based on query
+	sortObj[sort] = order;
+
 	try {
 		const result = await Chef.find()
-			.sort({ rating: 'desc' })
+			.sort(sortObj)
 			.skip((_page <= 0 ? 0 : _page) * _limit)
-			.limit(_limit);
+			.limit(_limit)
+			.select(projection);
 
 		const totalChefs = await Chef.countDocuments({});
 		const currPage = getCurrPage(
