@@ -70,41 +70,93 @@ async function getChefs(req, res) {
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
 
-	// Initialize projection as an empty object
+	// Initialize pipeline options as an empty object
 	let projection = {};
+	let includesObj = {};
+	let excludesObj = {};
 	const sortObj = {};
+
+	// set sort order field based on query
+	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
 
 	// Only create projection objects if include or exclude is not an empty string
 	if (include) {
-		const includesObj = createProjectionObject(include, {}, 1);
+		includesObj = createProjectionObject(include, {}, 1);
 		projection = { ...projection, ...includesObj };
 	}
 	if (exclude) {
-		const excludesObj = createProjectionObject(exclude, {}, 0);
+		excludesObj = createProjectionObject(exclude, {}, 0);
 		projection = { ...projection, ...excludesObj };
 	}
-	// set sort order field based on query
-	sortObj[sort] = order;
+
+	// create the aggregation pipeline
+	const pipeline = [
+		{ $sort: sortObj },
+		{ $skip: (_page <= 0 ? 0 : _page) * _limit },
+		{ $limit: _limit },
+	];
+
+	// add stage to calculate average rating
+	if (includesObj?.rating || !excludesObj?.rating) {
+		if (sortObj?.rating) {
+			pipeline.unshift(
+				{
+					$lookup: {
+						from: 'chefreviews',
+						localField: '_id',
+						foreignField: 'chefId',
+						as: 'rating',
+					},
+				},
+				{
+					$addFields: {
+						rating: {
+							$round: [{ $avg: '$rating.rating' }, 2],
+						},
+					},
+				}
+			);
+		} else {
+			pipeline.push(
+				{
+					$lookup: {
+						from: 'chefreviews',
+						localField: '_id',
+						foreignField: 'chefId',
+						as: 'rating',
+					},
+				},
+				{
+					$addFields: {
+						rating: {
+							$round: [{ $avg: '$rating.rating' }, 2],
+						},
+					},
+				}
+			);
+		}
+	}
+
+	// add projection stage if needed
+	if (Object.keys(projection).length > 0) {
+		pipeline.push({ $project: projection });
+	}
 
 	try {
-		const result = await Chef.find()
-			.sort(sortObj)
-			.skip((_page <= 0 ? 0 : _page) * _limit)
-			.limit(_limit)
-			.select(projection);
+		const result = await Chef.aggregate(pipeline);
 
-		const totalChefs = await Chef.countDocuments({});
+		const totalRecipes = await Chef.countDocuments({});
 		const currPage = getCurrPage(
 			_page <= 0 ? 1 : _page + 1,
 			_limit,
-			totalChefs
+			totalRecipes
 		);
 
 		res.json({
 			data: result,
 			meta: {
 				page: currPage,
-				totalCount: totalChefs,
+				totalCount: totalRecipes,
 			},
 		});
 	} catch (error) {
