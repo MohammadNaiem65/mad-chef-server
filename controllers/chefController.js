@@ -9,46 +9,60 @@ const createProjectionObject = require('../utility/createProjectionObject');
 
 async function getChef(req, res) {
 	const { chefId } = req.params;
+	const { include = '', exclude = '' } = req.query;
 
 	if (!chefId) {
 		return res.status(400).json({ message: 'Provide valid chef id.' });
 	}
 
+	// Create initial pipeline
+	const pipeline = [
+		{
+			$match: {
+				_id: new ObjectId(chefId),
+			},
+		},
+		{
+			$lookup: {
+				from: 'chefreviews',
+				localField: '_id',
+				foreignField: 'chefId',
+				as: 'rating',
+			},
+		},
+		{
+			$addFields: {
+				rating: {
+					$round: [{ $avg: '$rating.rating' }, 2],
+				},
+			},
+		},
+	];
+
+	// Initialize projection options as an empty object
+	let projection = {};
+	let includesObj = {};
+	let excludesObj = {};
+
+	// Only create projection objects if include or exclude is not an empty string
+	if (include) {
+		includesObj = createProjectionObject(include, {}, 1);
+		projection = { ...projection, ...includesObj };
+	}
+	if (exclude) {
+		excludesObj = createProjectionObject(exclude, {}, 0);
+		projection = { ...projection, ...excludesObj };
+	}
+
+	// Add projection stage if needed
+	if (Object.keys(projection).length > 0) {
+		pipeline.push({ $project: projection });
+	}
+
 	try {
-		const chef = await Chef.findById(chefId);
+		const chef = await Chef.aggregate(pipeline);
 
-		const rating = await ChefReview.aggregate([
-			{
-				$match: {
-					chefId: new ObjectId(chefId),
-				},
-			},
-			{
-				$group: {
-					_id: '$chefId',
-					rating: {
-						$avg: '$rating',
-					},
-					totalCount: {
-						$sum: 1,
-					},
-				},
-			},
-		]);
-
-		if (chef?._id) {
-			const result = {
-				...chef?._doc,
-				rating: rating?.length
-					? Number.parseFloat(rating[0]?.rating.toFixed(1))
-					: null,
-				totalRating: rating?.length ? rating[0]?.totalCount : null,
-			};
-
-			res.json({ message: 'Successful', data: result });
-		} else {
-			res.status(404).send('Something went wrong. Kindly try again!');
-		}
+		res.json({ message: 'Successful', data: chef });
 	} catch (err) {
 		console.log(err);
 		res.status(500).json(err);
@@ -116,7 +130,7 @@ async function getChefs(req, res) {
 					},
 				}
 			);
-		} else {
+		} else if (includesObj?.rating) {
 			pipeline.push(
 				{
 					$lookup: {
