@@ -174,9 +174,14 @@ async function getRecipes(req, res) {
 	try {
 		const result = await Recipe.aggregate(pipeline);
 
-		const totalRecipes = await Recipe.countDocuments({
-			author: new ObjectId(chef_id),
-		});
+		const totalRecipes = await Recipe.countDocuments(
+			chef_id
+				? {
+						author: new ObjectId(chef_id),
+				  }
+				: {}
+		);
+
 		const currPage = getCurrPage(
 			_page <= 0 ? 1 : _page + 1,
 			_limit,
