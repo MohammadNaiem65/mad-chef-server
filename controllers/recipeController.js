@@ -2,6 +2,7 @@ const { default: mongoose } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
 const getCurrPage = require('../utility/getCurrPage');
+const createProjectionObject = require('../utility/createProjectionObject');
 const Recipe = require('../models/Recipe');
 const Rating = require('../models/Rating');
 
@@ -173,7 +174,9 @@ async function getRecipes(req, res) {
 	try {
 		const result = await Recipe.aggregate(pipeline);
 
-		const totalRecipes = await Recipe.countDocuments({});
+		const totalRecipes = await Recipe.countDocuments({
+			author: new ObjectId(chef_id),
+		});
 		const currPage = getCurrPage(
 			_page <= 0 ? 1 : _page + 1,
 			_limit,
