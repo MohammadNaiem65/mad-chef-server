@@ -78,6 +78,7 @@ async function getRecipes(req, res) {
 		p,
 		page = 0,
 		l,
+		chef_id = '',
 		limit = process.env.RECIPES_PER_PAGE,
 		sort = 'updatedAt',
 		order = 'desc',
@@ -153,6 +154,15 @@ async function getRecipes(req, res) {
 				}
 			);
 		}
+	}
+
+	// add stage to match chef id if given
+	if (chef_id) {
+		pipeline.unshift({
+			$match: {
+				author: new ObjectId(chef_id),
+			},
+		});
 	}
 
 	// add projection stage if needed
