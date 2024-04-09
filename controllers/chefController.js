@@ -4,7 +4,6 @@ const { ObjectId } = mongoose.Types;
 const getCurrPage = require('../utility/getCurrPage');
 
 const Chef = require('../models/Chef');
-const ChefReview = require('../models/ChefReview');
 const createProjectionObject = require('../utility/createProjectionObject');
 
 async function getChef(req, res) {
@@ -62,7 +61,7 @@ async function getChef(req, res) {
 	try {
 		const chef = await Chef.aggregate(pipeline);
 
-		res.json({ message: 'Successful', data: chef });
+		res.json({ message: 'Successful', data: chef?.length > 0 && chef[0] });
 	} catch (err) {
 		console.log(err);
 		res.status(500).json(err);
