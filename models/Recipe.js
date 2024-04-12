@@ -11,6 +11,18 @@ const recipeSchema = new mongoose.Schema(
 			type: [String],
 			required: true,
 		},
+		region: {
+			type: String,
+			enum: [
+				'asia',
+				'europe',
+				'america',
+				'latin america',
+				'africa',
+				'middle east',
+			],
+			required: true,
+		},
 		method: {
 			type: String,
 			required: true,
