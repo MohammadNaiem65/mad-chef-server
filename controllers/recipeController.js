@@ -342,14 +342,11 @@ async function searchRecipes(req, res) {
 			},
 		]);
 
-		const currPage =
-			totalRecipes?.length > 0
-				? getCurrPage(
-						_page <= 0 ? 1 : _page + 1,
-						_limit,
-						totalRecipes[0].totalRecipes
-				  )
-				: 0;
+		const currPage = getCurrPage(
+			_page <= 0 ? 1 : _page + 1,
+			_limit,
+			totalRecipes[0].totalRecipes
+		);
 
 		res.json({
 			data: recipes,
