@@ -74,132 +74,6 @@ async function postRecipe(req, res) {
 	}
 }
 
-async function getRecipes(req, res) {
-	const {
-		p,
-		page = 0,
-		l,
-		limit = process.env.RECIPES_PER_PAGE,
-		chef_id = '',
-		sort = 'updatedAt',
-		order = 'desc',
-		include = '',
-		exclude = '',
-	} = req.query;
-
-	const _page = parseInt(p || page) - 1;
-	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
-
-	// Initialize pipeline options as an empty object
-	let projection = {};
-	let includesObj = {};
-	let excludesObj = {};
-	const sortObj = {};
-
-	// Set sort order field based on query
-	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
-
-	// Only create projection objects if include or exclude is not an empty string
-	if (include) {
-		includesObj = createProjectionObject(include, {}, 1);
-		projection = { ...projection, ...includesObj };
-	}
-	if (exclude) {
-		excludesObj = createProjectionObject(exclude, {}, 0);
-		projection = { ...projection, ...excludesObj };
-	}
-
-	// Create the initial aggregation pipeline
-	const pipeline = [
-		{ $sort: sortObj },
-		{ $skip: (_page <= 0 ? 0 : _page) * _limit },
-		{ $limit: _limit },
-	];
-
-	// Add stage to calculate average rating
-	if (includesObj?.rating || !excludesObj?.rating) {
-		if (sortObj?.rating) {
-			pipeline.unshift(
-				{
-					$lookup: {
-						from: 'ratings',
-						localField: '_id',
-						foreignField: 'recipeId',
-						as: 'rating',
-					},
-				},
-				{
-					$addFields: {
-						rating: {
-							$round: [{ $avg: '$rating.rating' }, 2],
-						},
-					},
-				}
-			);
-		} else {
-			pipeline.push(
-				{
-					$lookup: {
-						from: 'ratings',
-						localField: '_id',
-						foreignField: 'recipeId',
-						as: 'rating',
-					},
-				},
-				{
-					$addFields: {
-						rating: {
-							$round: [{ $avg: '$rating.rating' }, 2],
-						},
-					},
-				}
-			);
-		}
-	}
-
-	// Add stage to match chef id if given
-	if (chef_id) {
-		pipeline.unshift({
-			$match: {
-				author: new ObjectId(chef_id),
-			},
-		});
-	}
-
-	// Add projection stage if needed
-	if (Object.keys(projection).length > 0) {
-		pipeline.push({ $project: projection });
-	}
-
-	try {
-		const result = await Recipe.aggregate(pipeline);
-
-		const totalRecipes = await Recipe.countDocuments(
-			chef_id
-				? {
-						author: new ObjectId(chef_id),
-				  }
-				: {}
-		);
-
-		const currPage = getCurrPage(
-			_page <= 0 ? 1 : _page + 1,
-			_limit,
-			totalRecipes
-		);
-
-		res.json({
-			data: result,
-			meta: {
-				page: currPage,
-				totalCount: totalRecipes,
-			},
-		});
-	} catch (error) {
-		console.log(error);
-	}
-}
-
 async function searchRecipes(req, res) {
 	const {
 		p,
@@ -207,10 +81,11 @@ async function searchRecipes(req, res) {
 		l,
 		limit = process.env.RECIPES_PER_PAGE,
 		data_filter,
+		chef_id = '',
 		sort = 'updatedAt',
 		order = 'desc',
 		include = '',
-		exclude = 'chef_info',
+		exclude = '',
 	} = req.query;
 
 	const parsedDataFilter =
@@ -228,13 +103,13 @@ async function searchRecipes(req, res) {
 	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
 
 	// Only create projection objects if include or exclude is not an empty string
-	if (include) {
-		includesObj = createProjectionObject(include, {}, 1);
-		projection = { ...projection, ...includesObj };
-	}
 	if (exclude) {
 		excludesObj = createProjectionObject(exclude, {}, 0);
 		projection = { ...projection, ...excludesObj };
+	}
+	if (include) {
+		includesObj = createProjectionObject(include, {}, 1);
+		projection = { ...projection, ...includesObj };
 	}
 
 	// ! Create the initial aggregation pipeline
@@ -288,7 +163,13 @@ async function searchRecipes(req, res) {
 
 	// Add projection stage if needed
 	if (Object.keys(projection).length > 0) {
+		if (parsedDataFilter) {
+			pipeline.push({ $project: { chef_info: 0, ...projection } });
+		}
 		pipeline.push({ $project: projection });
+	}
+	if (parsedDataFilter && Object.keys(projection).length === 0) {
+		pipeline.push({ $project: { chef_info: 0 } });
 	}
 
 	// ! Add stages to Filter documents
@@ -326,12 +207,13 @@ async function searchRecipes(req, res) {
 			);
 		}
 
-		// Filter with upload date and region
+		// Filter with upload date and region and chef_id
 		if (parsedDataFilter?.uploadDate) {
 			let completeFilterStage;
 			let filterByDateStage;
 			const date = new Date();
 
+			// Add stage to filter by upload date
 			switch (parsedDataFilter.uploadDate) {
 				case 'today': {
 					const year = date.getFullYear();
@@ -373,6 +255,7 @@ async function searchRecipes(req, res) {
 					break;
 			}
 
+			// Create complete filter stage with region if region exists in the data_filter
 			if (parsedDataFilter?.region) {
 				completeFilterStage = {
 					$match: {
@@ -384,7 +267,20 @@ async function searchRecipes(req, res) {
 						},
 					},
 				};
+			} else if (chef_id) {
+				// Create complete filter stage with chef_id if region exists in the data_filter
+				completeFilterStage = {
+					$match: {
+						$expr: {
+							$and: [
+								{ $eq: ['$author', new ObjectId(chef_id)] },
+								filterByDateStage,
+							],
+						},
+					},
+				};
 			} else {
+				// Create complete filter stage without region
 				completeFilterStage = {
 					$match: {
 						$expr: filterByDateStage,
@@ -398,6 +294,7 @@ async function searchRecipes(req, res) {
 		// Filter with only region
 		if (
 			parsedDataFilter?.region &&
+			!chef_id &&
 			parsedDataFilter?.uploadDate === undefined
 		) {
 			filterPipeline.push({
@@ -406,6 +303,28 @@ async function searchRecipes(req, res) {
 				},
 			});
 		}
+
+		// Filter with only chef_id
+		if (
+			chef_id &&
+			parsedDataFilter?.region === undefined &&
+			parsedDataFilter?.uploadDate === undefined
+		) {
+			filterPipeline.push({
+				$match: {
+					author: new ObjectId(chef_id),
+				},
+			});
+		}
+	}
+
+	// Filter with only chef_id
+	if (chef_id && !parsedDataFilter) {
+		filterPipeline.push({
+			$match: {
+				author: new ObjectId(chef_id),
+			},
+		});
 	}
 
 	try {
@@ -441,8 +360,9 @@ async function searchRecipes(req, res) {
 			},
 		});
 	} catch (error) {
+		console.log(error);
 		res.json(error);
 	}
 }
 
-module.exports = { getRecipe, postRecipe, getRecipes, searchRecipes };
+module.exports = { getRecipe, postRecipe, searchRecipes };
