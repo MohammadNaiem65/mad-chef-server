@@ -87,6 +87,7 @@ async function searchRecipes(req, res) {
 		exclude = '',
 	} = req.query;
 
+	// parse the data_filter query string
 	const parsedDataFilter =
 		data_filter && JSON.parse(decodeURIComponent(data_filter));
 	const _page = parseInt(p || page) - 1;
@@ -117,7 +118,6 @@ async function searchRecipes(req, res) {
 		{ $skip: (_page <= 0 ? 0 : _page) * _limit },
 		{ $limit: _limit },
 	];
-	const filterPipeline = [];
 
 	// Add stage to calculate average rating
 	if (includesObj?.rating || !excludesObj?.rating) {
@@ -162,20 +162,26 @@ async function searchRecipes(req, res) {
 
 	// Add projection stage if needed
 	if (Object.keys(projection).length > 0) {
-		if (parsedDataFilter) {
+		// Remove chef information if documents have been filtered using search query
+		if (parsedDataFilter?.searchQuery) {
 			pipeline.push({ $project: { chef_info: 0, ...projection } });
 		}
 		pipeline.push({ $project: projection });
 	}
-	if (parsedDataFilter && Object.keys(projection).length === 0) {
-		pipeline.push({ $project: { chef_info: 0 } });
-	}
 
-	// ! Add stages to Filter documents
+	// ! Add filter stages to Filter documents
+	let filterPipeline = [];
+
+	// parsedDataFilter = {searchQuery: 'string', chefId: _id, region: 'string', uploadDate: 'today' || 'thisMonth' || 'thisYear'}
 	if (parsedDataFilter) {
+		const { searchQuery, chefId, region, uploadDate } =
+			parsedDataFilter || {};
+		const multistageFilters = [];
+		const singleStageFilters = [];
+
 		// Search with recipe title or chef name
-		if (parsedDataFilter?.searchQuery) {
-			filterPipeline.push(
+		if (searchQuery) {
+			multistageFilters.push(
 				{
 					$lookup: {
 						from: 'chefs',
@@ -184,7 +190,6 @@ async function searchRecipes(req, res) {
 						as: 'chef_info',
 					},
 				},
-
 				{
 					$match: {
 						$or: [
@@ -206,24 +211,26 @@ async function searchRecipes(req, res) {
 			);
 		}
 
-		// Filter with upload date and region and chef Id
-		if (
-			parsedDataFilter?.uploadDate &&
-			typeof parsedDataFilter?.uploadDate === 'string'
-		) {
-			let completeFilterStage;
-			let filterByDateStage;
+		// Filter with chef Id
+		if (chefId) {
+			singleStageFilters.push({
+				$eq: ['$author', new ObjectId(chefId)],
+			});
+		}
+
+		// Filter with upload date
+		if (uploadDate && typeof uploadDate === 'string') {
 			const date = new Date();
 
 			// Add stage to filter by upload date
-			switch (parsedDataFilter.uploadDate.toLowerCase()) {
+			switch (uploadDate.toLowerCase()) {
 				case 'today': {
 					const year = date.getFullYear();
 					const month = `0${date.getMonth() + 1}`.slice(-2); // Ensures two digits for month
 					const day = `0${date.getDate()}`.slice(-2); // Ensures two digits for day
 
 					const formattedDate = `${year}-${month}-${day}`;
-					filterByDateStage = {
+					singleStageFilters.push({
 						$eq: [
 							{
 								$dateToString: {
@@ -233,110 +240,49 @@ async function searchRecipes(req, res) {
 							},
 							formattedDate,
 						],
-					};
+					});
 					break;
 				}
 
-				case 'this month':
+				case 'thismonth':
 					const month = date.getMonth() + 1;
 
-					filterByDateStage = {
+					singleStageFilters.push({
 						$eq: [{ $month: '$createdAt' }, month],
-					};
+					});
 					break;
 
-				case 'this year':
+				case 'thisyear':
 					const year = date.getFullYear();
 
-					filterByDateStage = {
+					singleStageFilters.push({
 						$eq: [{ $year: '$createdAt' }, year],
-					};
+					});
 					break;
 
 				default:
 					break;
 			}
-
-			// Create complete filter stage with region if region exists in the data_filter
-			if (parsedDataFilter?.region) {
-				completeFilterStage = {
-					$match: {
-						$expr: {
-							$and: [
-								{ $eq: ['$region', parsedDataFilter.region] },
-								filterByDateStage,
-							],
-						},
-					},
-				};
-			} else if (parsedDataFilter?.chefId) {
-				// Create complete filter stage with chef Id if region exists in the data_filter
-				completeFilterStage = {
-					$match: {
-						$expr: {
-							$and: [
-								{
-									$eq: [
-										'$author',
-										new ObjectId(parsedDataFilter.chefId),
-									],
-								},
-								filterByDateStage,
-							],
-						},
-					},
-				};
-			} else {
-				// Create complete filter stage without region
-				completeFilterStage = {
-					$match: {
-						$expr: filterByDateStage,
-					},
-				};
-			}
-
-			filterPipeline.push(completeFilterStage);
 		}
 
-		// Filter with only region
-		if (
-			parsedDataFilter?.region &&
-			!parsedDataFilter?.chefId === undefined &&
-			parsedDataFilter?.uploadDate === undefined
-		) {
-			filterPipeline.push({
-				$match: {
-					region: parsedDataFilter.region,
-				},
+		// Filter by region
+		if (region) {
+			singleStageFilters.push({
+				$eq: ['$region', region],
 			});
 		}
 
-		// Filter with only chef Id
-		if (
-			parsedDataFilter?.chefId &&
-			parsedDataFilter?.region === undefined &&
-			parsedDataFilter?.uploadDate === undefined
-		) {
-			filterPipeline.push({
+		// Evaluate the final filterPipeline
+		filterPipeline = [
+			...multistageFilters,
+			{
 				$match: {
-					author: new ObjectId(parsedDataFilter.chefId),
+					$expr: {
+						$and: singleStageFilters,
+					},
 				},
-			});
-		}
-	}
-
-	// Filter with only chef Id
-	if (
-		parsedDataFilter?.chefId &&
-		parsedDataFilter?.uploadDate === undefined &&
-		parsedDataFilter?.region === undefined &&
-		parsedDataFilter?.uploadDate === undefined
-	) {
-		filterPipeline.push({
-			$match: {
-				author: new ObjectId(parsedDataFilter.chefId),
 			},
-		});
+		];
 	}
 
 	try {
@@ -346,7 +292,7 @@ async function searchRecipes(req, res) {
 			...pipeline,
 		]);
 
-		// Count total number of documents match the filter	pipeline
+		// // Count total number of documents match the filter	pipeline
 		const totalRecipes = await Recipe.aggregate([
 			...filterPipeline,
 			{
@@ -357,7 +303,7 @@ async function searchRecipes(req, res) {
 		const currPage = getCurrPage(
 			_page <= 0 ? 1 : _page + 1,
 			_limit,
-			totalRecipes[0].totalRecipes
+			totalRecipes[0]?.totalRecipes
 		);
 
 		res.json({
