@@ -81,7 +81,6 @@ async function searchRecipes(req, res) {
 		l,
 		limit = process.env.RECIPES_PER_PAGE,
 		data_filter,
-		chef_id = '',
 		sort = 'updatedAt',
 		order = 'desc',
 		include = '',
@@ -207,14 +206,17 @@ async function searchRecipes(req, res) {
 			);
 		}
 
-		// Filter with upload date and region and chef_id
-		if (parsedDataFilter?.uploadDate) {
+		// Filter with upload date and region and chef Id
+		if (
+			parsedDataFilter?.uploadDate &&
+			typeof parsedDataFilter?.uploadDate === 'string'
+		) {
 			let completeFilterStage;
 			let filterByDateStage;
 			const date = new Date();
 
 			// Add stage to filter by upload date
-			switch (parsedDataFilter.uploadDate) {
+			switch (parsedDataFilter.uploadDate.toLowerCase()) {
 				case 'today': {
 					const year = date.getFullYear();
 					const month = `0${date.getMonth() + 1}`.slice(-2); // Ensures two digits for month
@@ -267,13 +269,18 @@ async function searchRecipes(req, res) {
 						},
 					},
 				};
-			} else if (chef_id) {
-				// Create complete filter stage with chef_id if region exists in the data_filter
+			} else if (parsedDataFilter?.chefId) {
+				// Create complete filter stage with chef Id if region exists in the data_filter
 				completeFilterStage = {
 					$match: {
 						$expr: {
 							$and: [
-								{ $eq: ['$author', new ObjectId(chef_id)] },
+								{
+									$eq: [
+										'$author',
+										new ObjectId(parsedDataFilter.chefId),
+									],
+								},
 								filterByDateStage,
 							],
 						},
@@ -294,7 +301,7 @@ async function searchRecipes(req, res) {
 		// Filter with only region
 		if (
 			parsedDataFilter?.region &&
-			!chef_id &&
+			!parsedDataFilter?.chefId === undefined &&
 			parsedDataFilter?.uploadDate === undefined
 		) {
 			filterPipeline.push({
@@ -304,25 +311,30 @@ async function searchRecipes(req, res) {
 			});
 		}
 
-		// Filter with only chef_id
+		// Filter with only chef Id
 		if (
-			chef_id &&
+			parsedDataFilter?.chefId &&
 			parsedDataFilter?.region === undefined &&
 			parsedDataFilter?.uploadDate === undefined
 		) {
 			filterPipeline.push({
 				$match: {
-					author: new ObjectId(chef_id),
+					author: new ObjectId(parsedDataFilter.chefId),
 				},
 			});
 		}
 	}
 
-	// Filter with only chef_id
-	if (chef_id && !parsedDataFilter) {
+	// Filter with only chef Id
+	if (
+		parsedDataFilter?.chefId &&
+		parsedDataFilter?.uploadDate === undefined &&
+		parsedDataFilter?.region === undefined &&
+		parsedDataFilter?.uploadDate === undefined
+	) {
 		filterPipeline.push({
 			$match: {
-				author: new ObjectId(chef_id),
+				author: new ObjectId(parsedDataFilter.chefId),
 			},
 		});
 	}
