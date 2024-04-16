@@ -21,21 +21,6 @@ async function getChef(req, res) {
 				_id: new ObjectId(chefId),
 			},
 		},
-		{
-			$lookup: {
-				from: 'chefreviews',
-				localField: '_id',
-				foreignField: 'chefId',
-				as: 'rating',
-			},
-		},
-		{
-			$addFields: {
-				rating: {
-					$round: [{ $avg: '$rating.rating' }, 2],
-				},
-			},
-		},
 	];
 
 	// Initialize projection options as an empty object
@@ -44,13 +29,34 @@ async function getChef(req, res) {
 	let excludesObj = {};
 
 	// Only create projection objects if include or exclude is not an empty string
-	if (include) {
+	if (include && !exclude) {
 		includesObj = createProjectionObject(include, {}, 1);
 		projection = { ...projection, ...includesObj };
 	}
-	if (exclude) {
+	if (exclude && !include) {
 		excludesObj = createProjectionObject(exclude, {}, 0);
 		projection = { ...projection, ...excludesObj };
+	}
+
+	// Calculate rating if no projection field exists or includeObj has value 1 for rating field
+	if (Object.keys(projection).length === 0 || includesObj?.rating === 1) {
+		pipeline.push(
+			{
+				$lookup: {
+					from: 'chefreviews',
+					localField: '_id',
+					foreignField: 'chefId',
+					as: 'rating',
+				},
+			},
+			{
+				$addFields: {
+					rating: {
+						$round: [{ $avg: '$rating.rating' }, 2],
+					},
+				},
+			}
+		);
 	}
 
 	// Add projection stage if needed
@@ -59,6 +65,7 @@ async function getChef(req, res) {
 	}
 
 	try {
+		console.log(pipeline);
 		const chef = await Chef.aggregate(pipeline);
 
 		res.json({ message: 'Successful', data: chef?.length > 0 && chef[0] });
