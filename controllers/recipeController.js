@@ -45,7 +45,10 @@ async function getRecipe(req, res) {
 				totalRating: rating?.length ? rating[0]?.totalCount : null,
 			};
 
-			res.json(result);
+			res.json({
+				message: 'Successful',
+				data: result,
+			});
 		} else {
 			res.status(404).send('Something went wrong. Kindly try again!');
 		}

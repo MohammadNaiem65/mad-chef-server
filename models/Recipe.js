@@ -32,6 +32,9 @@ const recipeSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 		},
+		imgTitle: {
+			type: String,
+		},
 		like: {
 			type: Number,
 			default: 0,
