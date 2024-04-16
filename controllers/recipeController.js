@@ -103,11 +103,11 @@ async function searchRecipes(req, res) {
 	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
 
 	// Only create projection objects if include or exclude is not an empty string
-	if (exclude) {
+	if (exclude && !include) {
 		excludesObj = createProjectionObject(exclude, {}, 0);
 		projection = { ...projection, ...excludesObj };
 	}
-	if (include) {
+	if (include && !exclude) {
 		includesObj = createProjectionObject(include, {}, 1);
 		projection = { ...projection, ...includesObj };
 	}
@@ -162,11 +162,15 @@ async function searchRecipes(req, res) {
 
 	// Add projection stage if needed
 	if (Object.keys(projection).length > 0) {
-		// Remove chef information if documents have been filtered using search query
-		if (parsedDataFilter?.searchQuery) {
+		// Check if parsedDataFilter?.searchQuery exists and the first key's value is 0
+		if (
+			parsedDataFilter?.searchQuery &&
+			Object.values(projection)[0] === 0
+		) {
 			pipeline.push({ $project: { chef_info: 0, ...projection } });
+		} else {
+			pipeline.push({ $project: projection });
 		}
-		pipeline.push({ $project: projection });
 	}
 
 	// ! Add filter stages to Filter documents
@@ -244,7 +248,7 @@ async function searchRecipes(req, res) {
 					break;
 				}
 
-				case 'thismonth':
+				case 'this month':
 					const month = date.getMonth() + 1;
 
 					singleStageFilters.push({
@@ -252,7 +256,7 @@ async function searchRecipes(req, res) {
 					});
 					break;
 
-				case 'thisyear':
+				case 'this year':
 					const year = date.getFullYear();
 
 					singleStageFilters.push({
@@ -273,16 +277,20 @@ async function searchRecipes(req, res) {
 		}
 
 		// Evaluate the final filterPipeline
-		filterPipeline = [
-			...multistageFilters,
-			{
-				$match: {
-					$expr: {
-						$and: singleStageFilters,
+		if (singleStageFilters.length > 0) {
+			filterPipeline = [
+				...multistageFilters,
+				{
+					$match: {
+						$expr: {
+							$and: singleStageFilters,
+						},
 					},
 				},
-			},
-		];
+			];
+		} else {
+			filterPipeline = [...multistageFilters];
+		}
 	}
 
 	try {
@@ -292,7 +300,7 @@ async function searchRecipes(req, res) {
 			...pipeline,
 		]);
 
-		// // Count total number of documents match the filter	pipeline
+		// Count total number of documents match the filter	pipeline
 		const totalRecipes = await Recipe.aggregate([
 			...filterPipeline,
 			{
