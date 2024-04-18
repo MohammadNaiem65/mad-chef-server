@@ -65,7 +65,6 @@ async function getChef(req, res) {
 	}
 
 	try {
-		console.log(pipeline);
 		const chef = await Chef.aggregate(pipeline);
 
 		res.json({ message: 'Successful', data: chef?.length > 0 && chef[0] });

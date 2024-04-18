@@ -90,7 +90,7 @@ async function searchRecipes(req, res) {
 		exclude = '',
 	} = req.query;
 
-	// parse the data_filter query string
+	// parse the data_filter query string, _page and _limit
 	const parsedDataFilter =
 		data_filter && JSON.parse(decodeURIComponent(data_filter));
 	const _page = parseInt(p || page) - 1;
@@ -331,4 +331,131 @@ async function searchRecipes(req, res) {
 	}
 }
 
-module.exports = { getRecipe, postRecipe, searchRecipes };
+async function getRecipeRatings(req, res) {
+	const {
+		p,
+		page = 0,
+		l,
+		limit = process.env.RECIPES_PER_PAGE,
+		data_filter,
+		sort = 'rating',
+		order = 'desc',
+		include = '',
+		exclude = '',
+	} = req.query;
+
+	// parse the data_filter query string, _page and _limit
+	const parsedDataFilter =
+		data_filter && JSON.parse(decodeURIComponent(data_filter));
+	const _page = parseInt(p || page) - 1;
+	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+
+	// Initialize pipeline options as an empty object
+	let projection = {};
+	let includesObj = {};
+	let excludesObj = {};
+	const sortObj = {};
+
+	// Set sort order field based on query
+	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
+
+	// Only create projection objects if include or exclude is not an empty string
+	if (exclude && !include) {
+		excludesObj = createProjectionObject(exclude, {}, 0);
+		projection = { ...projection, ...excludesObj };
+	}
+	if (include && !exclude) {
+		includesObj = createProjectionObject(include, {}, 1);
+		projection = { ...projection, ...includesObj };
+	}
+
+	// ! Create the initial aggregation pipeline
+	let pipeline = [
+		{ $sort: sortObj },
+		{ $skip: (_page <= 0 ? 0 : _page) * _limit },
+		{ $limit: _limit },
+	];
+
+	// Match the specified filters
+	if (Object.keys(parsedDataFilter).length > 0) {
+		if (parsedDataFilter?.recipeId) {
+			pipeline.unshift({
+				$match: new ObjectId(parsedDataFilter?.recipeId),
+			});
+		}
+	}
+
+	// Include extra data if include has been specified
+	if (includesObj) {
+		const addFields = {};
+		if (includesObj?.username) {
+			addFields.username = {
+				$arrayElemAt: ['$userDetails.name', 0],
+			};
+		}
+		if (includesObj?.userImg) {
+			addFields.userImg = {
+				$arrayElemAt: ['$userDetails.img', 0],
+			};
+		}
+
+		if (Object.keys(addFields).length > 0) {
+			pipeline.push(
+				{
+					$lookup: {
+						from: 'users',
+						localField: 'userId',
+						foreignField: '_id',
+						as: 'userDetails',
+					},
+				},
+				{
+					$addFields: addFields,
+				},
+				{
+					$project: {
+						userDetails: 0,
+					},
+				}
+			);
+		}
+	}
+
+	// Add projection stage if needed
+	if (Object.keys(projection).length > 0) {
+		pipeline.push({ $project: projection });
+	}
+
+	try {
+		const ratings = await Rating.aggregate(pipeline);
+
+		// Aggregate the total rating count the the filter
+		const totalRatings = await Rating.aggregate([
+			{ $sort: sortObj },
+			{
+				$count: 'totalRatings',
+			},
+		]);
+
+		// Calculate current page count of total rating count
+		const currPage = getCurrPage(
+			_page <= 0 ? 1 : _page + 1,
+			_limit,
+			totalRatings[0]?.totalRatings
+		);
+
+		res.json({
+			data: ratings,
+			meta: {
+				page: currPage,
+				totalCount:
+					totalRatings?.length > 0 ? totalRatings[0].totalRatings : 0,
+			},
+		});
+	} catch (error) {
+		console.log(error);
+		res.json(error);
+	}
+}
+
+module.exports = { getRecipe, postRecipe, searchRecipes, getRecipeRatings };
