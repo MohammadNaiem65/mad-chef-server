@@ -91,8 +91,9 @@ async function searchRecipes(req, res) {
 	} = req.query;
 
 	// parse the data_filter query string, _page and _limit
-	const parsedDataFilter =
-		data_filter && JSON.parse(decodeURIComponent(data_filter));
+	const parsedDataFilter = data_filter
+		? JSON.parse(decodeURIComponent(data_filter))
+		: {};
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
 
@@ -345,8 +346,9 @@ async function getRecipeRatings(req, res) {
 	} = req.query;
 
 	// parse the data_filter query string, _page and _limit
-	const parsedDataFilter =
-		data_filter && JSON.parse(decodeURIComponent(data_filter));
+	const parsedDataFilter = data_filter
+		? JSON.parse(decodeURIComponent(data_filter))
+		: {};
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
 
