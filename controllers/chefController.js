@@ -1,4 +1,4 @@
-const { default: mongoose } = require('mongoose');
+const { default: mongoose, isValidObjectId } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
 const getCurrPage = require('../utility/getCurrPage');
@@ -10,7 +10,8 @@ async function getChef(req, res) {
 	const { chefId } = req.params;
 	const { include = '', exclude = '' } = req.query;
 
-	if (!chefId) {
+	// Check if chefId exists and is valid
+	if (!chefId || !isValidObjectId(chefId)) {
 		return res.status(400).json({ message: 'Provide valid chef id.' });
 	}
 
