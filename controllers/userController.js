@@ -1,24 +1,11 @@
-const mongoose = require('mongoose');
 const admin = require('firebase-admin');
 
+const validateMongoDBId = require('../utility/validateMongoDBId');
 const User = require('../models/User');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 
 // utility functions
-/**
- * @description This function is used validate if a id is a valid mongodb id
- *
- * @param {string} id - mongodb id string
- * @returns - if the id is invalid, returns an 400 error
- */
-function validateMongoDBId(id) {
-	if (!mongoose.Types.ObjectId.isValid(id)) {
-		// Send a 400 response indicating the ID is invalid
-		return res.status(400).send({ error: 'Invalid MongoDB ID provided.' });
-	}
-}
-
 /**
  * @description Creates a new mongodb document of promoting the role of a user
  *
@@ -37,8 +24,8 @@ function createRolePromotionDoc(id, role) {
 async function getUser(req, res) {
 	const id = req.params.id;
 
-	// check if the id is valid
-	validateMongoDBId(id);
+	// check if the id is valid and send 400 status if invalid
+	validateMongoDBId(id, res);
 
 	const user = await User.findOne({ _id: id });
 	res.json({ msg: 'Successful', data: user });
@@ -47,8 +34,8 @@ async function getUser(req, res) {
 async function applyToBeChef(req, res) {
 	const id = req.params.id;
 
-	// Check if the id is valid
-	validateMongoDBId(id);
+	// check if the id is valid and send 400 status if invalid
+	validateMongoDBId(id, res);
 
 	const result = await createRolePromotionDoc(id, 'chef');
 
@@ -65,6 +52,8 @@ async function handleUserRolePromotion(req, res) {
 	} else if (!requestId) {
 		return res.status(400).json({ msg: 'Request id is required!' });
 	}
+
+	validateMongoDBId(userId);
 
 	try {
 		const requestedDocument = await RolePromotionApplicants.findById(
