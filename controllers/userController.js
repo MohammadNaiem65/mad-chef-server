@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
+const createProjectionObject = require('../utility/createProjectionObject');
 const User = require('../models/User');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
@@ -23,12 +24,32 @@ function createRolePromotionDoc(id, role) {
 // middleware functions
 async function getUser(req, res) {
 	const id = req.params.id;
+	const { include, exclude } = req.query;
 
 	// check if the id is valid and send 400 status if invalid
 	validateMongoDBId(id, res);
 
-	const user = await User.findOne({ _id: id });
-	res.json({ msg: 'Successful', data: user });
+	// Initialize projection options as an empty object
+	let projection = {};
+
+	// Only create projection objects if include or exclude is not an empty string
+	if (include && !exclude) {
+		includesObj = createProjectionObject(include, {}, 1);
+		projection = { ...projection, ...includesObj };
+	}
+	if (exclude && !include) {
+		excludesObj = createProjectionObject(exclude, {}, 0);
+		projection = { ...projection, ...excludesObj };
+	}
+
+	try {
+		const user = await User.findById(id, projection);
+
+		res.json({ msg: 'Successful', data: user });
+	} catch (err) {
+		console.log(err);
+		res.status(500).json(err);
+	}
 }
 
 async function applyToBeChef(req, res) {
