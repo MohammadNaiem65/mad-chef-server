@@ -147,7 +147,7 @@ async function reAuthenticate(req, res) {
 	// if token not found - send forbidden response
 	if (!storedToken) {
 		res.clearCookie('jwt');
-		return res.sendStatus(403).json({ data: err.message });
+		return res.status(403).json({ data: 'Token does not found.' });
 	}
 
 	// verify the token
