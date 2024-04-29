@@ -8,6 +8,7 @@ const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
+const Rating = require('../models/Rating');
 
 // utility functions
 /**
@@ -49,9 +50,8 @@ async function getUser(req, res) {
 		const user = await User.findById(id, projection);
 
 		res.json({ msg: 'Successful', data: user });
-	} catch (err) {
-		console.log(err);
-		res.status(500).json(err);
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -68,7 +68,7 @@ async function getUserBookmarks(req, res) {
 
 		res.json({ msg: 'Successful', data: bookmarks });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -88,24 +88,24 @@ async function addUserBookmark(req, res) {
 
 		res.json({ msg: 'Successful', data: result });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
 async function removeUserBookmark(req, res) {
-	const { recipeId } = req.query;
+	const { documentId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(recipeId, res);
+	validateMongoDBId(documentId, res);
 
 	try {
 		const result = await Bookmark.deleteOne({
-			_id: new Types.ObjectId(recipeId),
+			_id: new Types.ObjectId(documentId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -122,7 +122,7 @@ async function getUserLikes(req, res) {
 
 		res.json({ msg: 'Successful', data: likes });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -142,24 +142,80 @@ async function addUserLike(req, res) {
 
 		res.json({ msg: 'Successful', data: result });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
 async function removeUserLike(req, res) {
-	const { recipeId } = req.query;
+	const { documentId } = req.query;
 
-	// validate user id and recipe id
-	validateMongoDBId(recipeId, res);
+	// validate recipe id
+	validateMongoDBId(documentId, res);
 
 	try {
 		const result = await Like.deleteOne({
-			_id: new Types.ObjectId(recipeId),
+			_id: new Types.ObjectId(documentId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
 	} catch (error) {
-		res.status(500).json({ msg: 'Successful', data: error });
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function getRecipeRatings(req, res) {
+	const { id } = req.params;
+
+	// validate user id
+	validateMongoDBId(id, res);
+
+	try {
+		const ratings = await Rating.find({
+			userId: new Types.ObjectId(id),
+		});
+
+		res.json({ msg: 'Successful', data: ratings });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function addRecipeRating(req, res) {
+	const { userId } = req.user;
+	const { recipeId, rating, message } = req.body;
+
+	// validate user id and recipe id
+	validateMongoDBId(userId, res);
+	validateMongoDBId(recipeId, res);
+
+	try {
+		const result = await Rating.create({
+			recipeId: new Types.ObjectId(recipeId),
+			userId: new Types.ObjectId(userId),
+			rating,
+			message,
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function removeRecipeRating(req, res) {
+	const { documentId } = req.query;
+
+	// validate recipe id
+	validateMongoDBId(documentId, res);
+
+	try {
+		const result = await Rating.deleteOne({
+			_id: new Types.ObjectId(documentId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -257,7 +313,7 @@ async function handleUserRolePromotion(req, res) {
 			res.json({ msg: 'User promotion request not found' });
 		}
 	} catch (error) {
-		res.sendStatus(500);
+		res.status(500).json({ msg: 'An error occurred', data: error });
 	}
 }
 
@@ -269,6 +325,9 @@ module.exports = {
 	addUserLike,
 	getUserLikes,
 	removeUserLike,
+	getRecipeRatings,
+	addRecipeRating,
+	removeRecipeRating,
 	applyToBeChef,
 	handleUserRolePromotion,
 };
