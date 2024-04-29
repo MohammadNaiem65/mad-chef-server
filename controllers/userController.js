@@ -59,7 +59,7 @@ async function getUserBookmarks(req, res) {
 	const { id } = req.params;
 
 	// validate user id
-	validateMongoDBId(id);
+	validateMongoDBId(id, res);
 
 	try {
 		const bookmarks = await Bookmark.find({
@@ -77,8 +77,8 @@ async function addUserBookmark(req, res) {
 	const { recipeId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(id);
-	validateMongoDBId(recipeId);
+	validateMongoDBId(id, res);
+	validateMongoDBId(recipeId, res);
 
 	try {
 		const result = await Bookmark.create({
@@ -96,7 +96,7 @@ async function removeUserBookmark(req, res) {
 	const { recipeId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(recipeId);
+	validateMongoDBId(recipeId, res);
 
 	try {
 		const result = await Bookmark.deleteOne({
@@ -113,7 +113,7 @@ async function getUserLikes(req, res) {
 	const { id } = req.params;
 
 	// validate user id
-	validateMongoDBId(id);
+	validateMongoDBId(id, res);
 
 	try {
 		const likes = await Like.find({
@@ -131,8 +131,8 @@ async function addUserLike(req, res) {
 	const { recipeId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(id);
-	validateMongoDBId(recipeId);
+	validateMongoDBId(id, res);
+	validateMongoDBId(recipeId, res);
 
 	try {
 		const result = await Like.create({
@@ -150,7 +150,7 @@ async function removeUserLike(req, res) {
 	const { recipeId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(recipeId);
+	validateMongoDBId(recipeId, res);
 
 	try {
 		const result = await Like.deleteOne({
@@ -185,7 +185,7 @@ async function handleUserRolePromotion(req, res) {
 		return res.status(400).json({ msg: 'Request id is required!' });
 	}
 
-	validateMongoDBId(userId);
+	validateMongoDBId(userId, res);
 
 	try {
 		const requestedDocument = await RolePromotionApplicants.findById(
