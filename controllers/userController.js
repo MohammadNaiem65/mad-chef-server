@@ -7,6 +7,7 @@ const User = require('../models/User');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
+const Like = require('../models/Like');
 
 // utility functions
 /**
@@ -62,7 +63,7 @@ async function getUserBookmarks(req, res) {
 
 	try {
 		const bookmarks = await Bookmark.find({
-			userId: id,
+			userId: new Types.ObjectId(id),
 		});
 
 		res.json({ msg: 'Successful', data: bookmarks });
@@ -81,8 +82,8 @@ async function addUserBookmark(req, res) {
 
 	try {
 		const result = await Bookmark.create({
-			userId: id,
-			recipeId,
+			userId: new Types.ObjectId(id),
+			recipeId: new Types.ObjectId(recipeId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
@@ -99,6 +100,60 @@ async function removeUserBookmark(req, res) {
 
 	try {
 		const result = await Bookmark.deleteOne({
+			_id: new Types.ObjectId(recipeId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
+	}
+}
+
+async function getUserLikes(req, res) {
+	const { id } = req.params;
+
+	// validate user id
+	validateMongoDBId(id);
+
+	try {
+		const likes = await Like.find({
+			userId: new Types.ObjectId(id),
+		});
+
+		res.json({ msg: 'Successful', data: likes });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
+	}
+}
+
+async function addUserLike(req, res) {
+	const { id } = req.params;
+	const { recipeId } = req.query;
+
+	// validate user id and recipe id
+	validateMongoDBId(id);
+	validateMongoDBId(recipeId);
+
+	try {
+		const result = await Like.create({
+			userId: new Types.ObjectId(id),
+			recipeId: new Types.ObjectId(recipeId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
+	}
+}
+
+async function removeUserLike(req, res) {
+	const { recipeId } = req.query;
+
+	// validate user id and recipe id
+	validateMongoDBId(recipeId);
+
+	try {
+		const result = await Like.deleteOne({
 			_id: new Types.ObjectId(recipeId),
 		});
 
@@ -211,6 +266,9 @@ module.exports = {
 	addUserBookmark,
 	getUserBookmarks,
 	removeUserBookmark,
+	addUserLike,
+	getUserLikes,
+	removeUserLike,
 	applyToBeChef,
 	handleUserRolePromotion,
 };
