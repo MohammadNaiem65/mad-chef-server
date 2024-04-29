@@ -1,10 +1,12 @@
 const admin = require('firebase-admin');
+const { Types } = require('mongoose');
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
 const User = require('../models/User');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
+const Bookmark = require('../models/Bookmark');
 
 // utility functions
 /**
@@ -49,6 +51,60 @@ async function getUser(req, res) {
 	} catch (err) {
 		console.log(err);
 		res.status(500).json(err);
+	}
+}
+
+async function getUserBookmarks(req, res) {
+	const { id } = req.params;
+
+	// validate user id
+	validateMongoDBId(id);
+
+	try {
+		const bookmarks = await Bookmark.find({
+			userId: id,
+		});
+
+		res.json({ msg: 'Successful', data: bookmarks });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
+	}
+}
+
+async function addUserBookmark(req, res) {
+	const { id } = req.params;
+	const { recipeId } = req.query;
+
+	// validate user id and recipe id
+	validateMongoDBId(id);
+	validateMongoDBId(recipeId);
+
+	try {
+		const result = await Bookmark.create({
+			userId: id,
+			recipeId,
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
+	}
+}
+
+async function removeUserBookmark(req, res) {
+	const { recipeId } = req.query;
+
+	// validate user id and recipe id
+	validateMongoDBId(recipeId);
+
+	try {
+		const result = await Bookmark.deleteOne({
+			_id: new Types.ObjectId(recipeId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'Successful', data: error });
 	}
 }
 
@@ -150,4 +206,11 @@ async function handleUserRolePromotion(req, res) {
 	}
 }
 
-module.exports = { getUser, applyToBeChef, handleUserRolePromotion };
+module.exports = {
+	getUser,
+	addUserBookmark,
+	getUserBookmarks,
+	removeUserBookmark,
+	applyToBeChef,
+	handleUserRolePromotion,
+};

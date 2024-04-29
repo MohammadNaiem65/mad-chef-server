@@ -7,14 +7,20 @@ const {
 	getUser,
 	applyToBeChef,
 	handleUserRolePromotion,
+	getUserBookmarks,
+	addUserBookmark,
+	removeUserBookmark,
 } = require('../controllers/userController');
 
 const router = express.Router();
 
 router.get(['/user/:id', '/:id'], checkAuth, getUser);
-router.post('/:id/apply-to-be-chef', checkAuth, applyToBeChef);
+router.get(['/user/:id/bookmarks', '/:id/bookmarks'], getUserBookmarks);
+router.post(['/user/:id/bookmarks', '/:id/bookmarks'], addUserBookmark);
+router.delete(['/user/:id/bookmarks', '/:id/bookmarks'], removeUserBookmark);
+router.post('/user/:id/apply-to-be-chef', checkAuth, applyToBeChef);
 router.post(
-	'/:id/requests/:requestId/action',
+	'/user/:id/requests/:requestId/action',
 	checkAuth,
 	handleUserRolePromotion
 );
