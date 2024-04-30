@@ -382,7 +382,12 @@ async function getRecipeRatings(req, res) {
 	if (Object.keys(parsedDataFilter).length > 0) {
 		if (parsedDataFilter?.recipeId) {
 			pipeline.unshift({
-				$match: new ObjectId(parsedDataFilter?.recipeId),
+				$match: { recipeId: new ObjectId(parsedDataFilter?.recipeId) },
+			});
+		}
+		if (parsedDataFilter?.userId) {
+			pipeline.unshift({
+				$match: { userId: new ObjectId(parsedDataFilter?.userId) },
 			});
 		}
 	}
