@@ -5,6 +5,7 @@ const getCurrPage = require('../utility/getCurrPage');
 const createProjectionObject = require('../utility/createProjectionObject');
 const Recipe = require('../models/Recipe');
 const Rating = require('../models/Rating');
+const validateMongoDBId = require('../utility/validateMongoDBId');
 
 async function getRecipe(req, res) {
 	const { recipeId } = req.params;
@@ -14,6 +15,8 @@ async function getRecipe(req, res) {
 			.status(400)
 			.json({ message: 'An ID is required to get a recipe.' });
 	}
+
+	validateMongoDBId(recipeId, res);
 
 	try {
 		const recipe = await Recipe.findById(recipeId);
@@ -62,6 +65,9 @@ async function postRecipe(req, res) {
 	const { userId, role } = req.user;
 	const { title, ingredients, method, img, author } = req.body;
 
+	// Validate the userId
+	validateMongoDBId(userId, res);
+
 	if (userId && role === 'chef') {
 		const doc = await Recipe.create({
 			title,
@@ -96,6 +102,11 @@ async function searchRecipes(req, res) {
 		: {};
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+
+	// Validate the chefId if exists
+	if (parsedDataFilter?.chefId) {
+		validateMongoDBId(parsedDataFilter.chefId, res);
+	}
 
 	// Initialize pipeline options as an empty object
 	let projection = {};
@@ -351,6 +362,14 @@ async function getRecipeRatings(req, res) {
 		: {};
 	const _page = parseInt(p || page) - 1;
 	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+
+	// Validate recipeId and userId if exists
+	if (parsedDataFilter?.recipeId) {
+		validateMongoDBId(parsedDataFilter.recipeId);
+	}
+	if (parsedDataFilter?.userId) {
+		validateMongoDBId(parsedDataFilter.userId);
+	}
 
 	// Initialize pipeline options as an empty object
 	let projection = {};

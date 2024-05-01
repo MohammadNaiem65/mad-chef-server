@@ -2,9 +2,9 @@ const { default: mongoose, isValidObjectId } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
 const getCurrPage = require('../utility/getCurrPage');
+const createProjectionObject = require('../utility/createProjectionObject');
 
 const Chef = require('../models/Chef');
-const createProjectionObject = require('../utility/createProjectionObject');
 
 async function getChef(req, res) {
 	const { chefId } = req.params;
