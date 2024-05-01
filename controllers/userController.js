@@ -9,6 +9,7 @@ const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
 const Rating = require('../models/Rating');
+const ChefReview = require('../models/ChefReview');
 
 // utility functions
 /**
@@ -55,6 +56,7 @@ async function getUser(req, res) {
 	}
 }
 
+// ! Bookmarks related routes
 async function getUserBookmarks(req, res) {
 	const { id } = req.params;
 
@@ -109,6 +111,7 @@ async function removeUserBookmark(req, res) {
 	}
 }
 
+// ! Likes related routes
 async function getUserLikes(req, res) {
 	const { id } = req.params;
 
@@ -163,6 +166,7 @@ async function removeUserLike(req, res) {
 	}
 }
 
+// ! Recipe ratings related routes
 async function getRecipeRatings(req, res) {
 	const { id } = req.params;
 
@@ -202,6 +206,29 @@ async function addRecipeRating(req, res) {
 	}
 }
 
+async function editRecipeRating(req, res) {
+	const { docId } = req.query;
+	const { rating, message } = req.body;
+
+	// validate docId of rating document
+	validateMongoDBId(docId, res);
+
+	try {
+		const result = await Rating.updateOne(
+			{ _id: new Types.ObjectId(docId) },
+			{
+				rating,
+				message,
+			},
+			{ runValidators: true }
+		);
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
 async function removeRecipeRating(req, res) {
 	const { documentId } = req.query;
 
@@ -219,6 +246,87 @@ async function removeRecipeRating(req, res) {
 	}
 }
 
+// ! Chef reviews related routes
+async function getChefReviews(req, res) {
+	const { id } = req.params;
+
+	// validate user id
+	validateMongoDBId(id, res);
+
+	try {
+		const reviews = await ChefReview.find({
+			userId: new Types.ObjectId(id),
+		});
+
+		res.json({ msg: 'Successful', data: reviews });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function addChefReview(req, res) {
+	const { userId } = req.user;
+	const { chefId, rating, message } = req.body;
+
+	// validate user id and recipe id
+	validateMongoDBId(userId, res);
+	validateMongoDBId(chefId, res);
+
+	try {
+		const result = await ChefReview.create({
+			chefId: new Types.ObjectId(chefId),
+			userId: new Types.ObjectId(userId),
+			rating,
+			message,
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function editChefReview(req, res) {
+	const { docId } = req.query;
+	const { rating, message } = req.body;
+
+	// validate docId of review document
+	validateMongoDBId(docId, res);
+
+	try {
+		const result = await ChefReview.updateOne(
+			{ _id: new Types.ObjectId(docId) },
+			{
+				rating,
+				message,
+			},
+			{ runValidators: true }
+		);
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function removeChefReview(req, res) {
+	const { documentId } = req.query;
+
+	// validate recipe id
+	validateMongoDBId(documentId, res);
+
+	try {
+		const result = await ChefReview.deleteOne({
+			_id: new Types.ObjectId(documentId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (error) {
+		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+// ! Role promotion related routes
 async function applyToBeChef(req, res) {
 	const id = req.params.id;
 
@@ -327,7 +435,12 @@ module.exports = {
 	removeUserLike,
 	getRecipeRatings,
 	addRecipeRating,
+	editRecipeRating,
 	removeRecipeRating,
+	getChefReviews,
+	addChefReview,
+	editChefReview,
+	removeChefReview,
 	applyToBeChef,
 	handleUserRolePromotion,
 };
