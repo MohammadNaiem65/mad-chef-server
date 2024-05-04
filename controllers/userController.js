@@ -95,14 +95,14 @@ async function addUserBookmark(req, res) {
 }
 
 async function removeUserBookmark(req, res) {
-	const { documentId } = req.query;
+	const { docId } = req.query;
 
 	// validate user id and recipe id
-	validateMongoDBId(documentId, res);
+	validateMongoDBId(docId, res);
 
 	try {
 		const result = await Bookmark.deleteOne({
-			_id: new Types.ObjectId(documentId),
+			_id: new Types.ObjectId(docId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
@@ -150,14 +150,14 @@ async function addUserLike(req, res) {
 }
 
 async function removeUserLike(req, res) {
-	const { documentId } = req.query;
+	const { docId } = req.query;
 
 	// validate recipe id
-	validateMongoDBId(documentId, res);
+	validateMongoDBId(docId, res);
 
 	try {
 		const result = await Like.deleteOne({
-			_id: new Types.ObjectId(documentId),
+			_id: new Types.ObjectId(docId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
@@ -230,14 +230,14 @@ async function editRecipeRating(req, res) {
 }
 
 async function removeRecipeRating(req, res) {
-	const { documentId } = req.query;
+	const { docId } = req.query;
 
 	// validate recipe id
-	validateMongoDBId(documentId, res);
+	validateMongoDBId(docId, res);
 
 	try {
 		const result = await Rating.deleteOne({
-			_id: new Types.ObjectId(documentId),
+			_id: new Types.ObjectId(docId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
@@ -310,14 +310,14 @@ async function editChefReview(req, res) {
 }
 
 async function removeChefReview(req, res) {
-	const { documentId } = req.query;
+	const { docId } = req.query;
 
 	// validate recipe id
-	validateMongoDBId(documentId, res);
+	validateMongoDBId(docId, res);
 
 	try {
 		const result = await ChefReview.deleteOne({
-			_id: new Types.ObjectId(documentId),
+			_id: new Types.ObjectId(docId),
 		});
 
 		res.json({ msg: 'Successful', data: result });
