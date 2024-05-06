@@ -4,12 +4,12 @@ const { Types } = require('mongoose');
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
 const User = require('../models/User');
-const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
 const Rating = require('../models/Rating');
 const ChefReview = require('../models/ChefReview');
+const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 
 // utility functions
 /**
@@ -32,7 +32,9 @@ async function getUser(req, res) {
 	const { include, exclude } = req.query;
 
 	// check if the id is valid and send 400 status if invalid
-	validateMongoDBId(id, res);
+	if (!validateMongoDBId(id, res)) {
+		return; // Stop execution if the ID is invalid
+	}
 
 	// Initialize projection options as an empty object
 	let projection = {};
@@ -53,6 +55,35 @@ async function getUser(req, res) {
 		res.json({ msg: 'Successful', data: user });
 	} catch (error) {
 		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function verifyUserEmail(req, res) {
+	const { uid: firebaseId, token } = req.query;
+
+	try {
+		// Verify the ID token
+		const decodedToken = await admin.auth().verifyIdToken(token);
+		const { _id, uid } = decodedToken;
+		if (uid === firebaseId) {
+			// check if the id is valid and send 400 status if invalid
+			if (!validateMongoDBId(_id)) {
+				return; // Stop execution if the ID is invalid
+			}
+
+			// Update the user's status in your database
+			const user = await Chef.findById(_id);
+			user.emailVerified = true;
+
+			await user.save();
+
+			res.json({ msg: 'Successful', data: user });
+		} else {
+			res.status(400).send('Email verification failed');
+		}
+	} catch (error) {
+		console.error('Error verifying ID token:', error);
+		res.status(500).send('Internal server error');
 	}
 }
 
@@ -427,6 +458,7 @@ async function handleUserRolePromotion(req, res) {
 
 module.exports = {
 	getUser,
+	verifyUserEmail,
 	addUserBookmark,
 	getUserBookmarks,
 	removeUserBookmark,
