@@ -28,18 +28,6 @@ const userSchema = new mongoose.Schema(
 			default: 'basic',
 		},
 		img: String,
-		favorites: {
-			type: [mongoose.SchemaTypes.ObjectId],
-			ref: 'Recipe',
-		},
-		bookmarks: {
-			type: [mongoose.SchemaTypes.ObjectId],
-			ref: 'Recipe',
-		},
-		consults: {
-			type: [mongoose.SchemaTypes.ObjectId],
-			ref: 'Consult',
-		},
 	},
 	{
 		timestamps: true,
