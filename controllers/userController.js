@@ -59,25 +59,26 @@ async function getUser(req, res) {
 }
 
 async function verifyUserEmail(req, res) {
-	const { uid: firebaseId, token } = req.query;
+	const { uid: firebaseId } = req.query;
 
 	try {
 		// Verify the ID token
-		const decodedToken = await admin.auth().verifyIdToken(token);
-		const { _id, uid } = decodedToken;
-		if (uid === firebaseId) {
-			// check if the id is valid and send 400 status if invalid
-			if (!validateMongoDBId(_id)) {
-				return; // Stop execution if the ID is invalid
+		const user = await admin.auth().getUser(firebaseId);
+		const { uid, emailVerified, customClaims } = user;
+
+		if (uid) {
+			// Find the user from DB
+			const user = await User.findById(customClaims._id);
+
+			if (user?._id) {
+				// Update the user's emailVerified status
+				user.emailVerified = emailVerified;
+				await user.save();
+
+				res.redirect('http://localhost:5173/profile/user/my-profile');
+			} else {
+				res.status(400).send('Email verification failed');
 			}
-
-			// Update the user's status in your database
-			const user = await Chef.findById(_id);
-			user.emailVerified = true;
-
-			await user.save();
-
-			res.json({ msg: 'Successful', data: user });
 		} else {
 			res.status(400).send('Email verification failed');
 		}

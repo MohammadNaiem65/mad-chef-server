@@ -26,8 +26,8 @@ const {
 
 const router = express.Router();
 
+router.get('/user/verify-email', verifyUserEmail);
 router.get(['/user/:id', '/:id'], checkAuth, getUser);
-router.patch('/user/verify-email', verifyUserEmail);
 
 // ! Bookmarks related routes
 router.get(['/user/:id/bookmarks', '/:id/bookmarks'], checkAuth, getUserBookmarks);
