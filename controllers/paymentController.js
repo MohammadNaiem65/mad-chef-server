@@ -1,3 +1,6 @@
+const validateMongoDBId = require('../utility/validateMongoDBId');
+const PaymentReceipt = require('../models/PaymentReceipt');
+
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 async function createPaymentIntent(req, res) {
@@ -18,4 +21,27 @@ async function createPaymentIntent(req, res) {
 	});
 }
 
-module.exports = { createPaymentIntent };
+async function savePaymentReceipt(req, res) {
+	const { userId, username, email, title, transactionId, amount } = req.body;
+
+	// Validate the userId
+	validateMongoDBId(userId, res);
+
+	try {
+		// Save the payment receipt to DB
+		const transactionReceipt = await PaymentReceipt.create({
+			userId,
+			username,
+			email,
+			title,
+			transactionId,
+			amount,
+		});
+
+		res.json({ msg: 'Successful', data: transactionReceipt });
+	} catch (err) {
+		res.status(500).json({ msg: 'An error occurred', data: err });
+	}
+}
+
+module.exports = { createPaymentIntent, savePaymentReceipt };
