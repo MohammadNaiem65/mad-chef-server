@@ -1,3 +1,6 @@
+const { default: mongoose } = require('mongoose');
+const { ObjectId } = mongoose.Types;
+
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const PaymentReceipt = require('../models/PaymentReceipt');
 
@@ -26,6 +29,53 @@ async function createPaymentIntent(req, res) {
 	});
 }
 
+async function getPaymentReceipts(req, res) {
+	const { userId, filter } = req.query;
+
+	// Stop the execution if the userId exists and is invalid
+	if (userId !== undefined && !validateMongoDBId(userId, res)) {
+		return;
+	}
+
+	// Create aggregation pipeline
+	let pipeline;
+
+	if (userId && filter) {
+		pipeline = [
+			{
+				$match: {
+					userId: new ObjectId('6636632fe662b85104099c5d'),
+					status: filter,
+				},
+			},
+		];
+	} else if (userId) {
+		pipeline = [
+			{
+				$match: {
+					userId: new ObjectId('6636632fe662b85104099c5d'),
+				},
+			},
+		];
+	} else if (filter) {
+		pipeline = [
+			{
+				$match: {
+					status: 'failed',
+				},
+			},
+		];
+	}
+
+	try {
+		const paymentReceipts = await PaymentReceipt.aggregate(pipeline);
+
+		res.json({ msg: 'Successful', data: paymentReceipts });
+	} catch (err) {
+		res.status(500).json({ msg: 'An error occurred', data: err });
+	}
+}
+
 async function savePaymentReceipt(req, res) {
 	const { userId, username, email, title, transactionId, amount, status } =
 		req.body;
@@ -51,4 +101,8 @@ async function savePaymentReceipt(req, res) {
 	}
 }
 
-module.exports = { createPaymentIntent, savePaymentReceipt };
+module.exports = {
+	createPaymentIntent,
+	getPaymentReceipts,
+	savePaymentReceipt,
+};

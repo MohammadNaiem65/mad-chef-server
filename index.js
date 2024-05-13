@@ -51,7 +51,7 @@ app.use('/users', userHandler);
 app.use('/chefs', chefHandler);
 app.use('/recipes', recipeHandler);
 app.use('/consults', consultHandler);
-app.use('/payment', paymentHandler);
+app.use('/payments', paymentHandler);
 
 // listen app
 app.listen(port, () => {
