@@ -5,6 +5,11 @@ const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
 async function createPaymentIntent(req, res) {
 	const { amount } = req.body;
+
+	if (typeof amount !== 'number') {
+		return res.status(400).json({ msg: 'Amount must be a number' });
+	}
+
 	const finalAmount = parseFloat(amount.toFixed(2));
 
 	const paymentIntent = await stripe.paymentIntents.create({
@@ -22,7 +27,8 @@ async function createPaymentIntent(req, res) {
 }
 
 async function savePaymentReceipt(req, res) {
-	const { userId, username, email, title, transactionId, amount } = req.body;
+	const { userId, username, email, title, transactionId, amount, status } =
+		req.body;
 
 	// Validate the userId
 	validateMongoDBId(userId, res);
@@ -36,6 +42,7 @@ async function savePaymentReceipt(req, res) {
 			title,
 			transactionId,
 			amount,
+			status,
 		});
 
 		res.json({ msg: 'Successful', data: transactionReceipt });
