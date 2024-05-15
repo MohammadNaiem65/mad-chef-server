@@ -9,7 +9,7 @@ const paymentReceiptSchema = new mongoose.Schema(
 		},
 		username: String,
 		email: String,
-		title: {
+		pkg: {
 			type: String,
 			required: true,
 			enum: ['student/pro-pkg', 'student/chef-support'],

@@ -41,14 +41,24 @@ async function getPaymentReceipts(req, res) {
 	let pipeline;
 
 	if (userId && filter) {
-		pipeline = [
-			{
-				$match: {
-					userId: new ObjectId('6636632fe662b85104099c5d'),
-					status: filter,
+		if (filter === 'all') {
+			pipeline = [
+				{
+					$match: {
+						userId: new ObjectId('6636632fe662b85104099c5d'),
+					},
 				},
-			},
-		];
+			];
+		} else {
+			pipeline = [
+				{
+					$match: {
+						userId: new ObjectId('6636632fe662b85104099c5d'),
+						status: filter,
+					},
+				},
+			];
+		}
 	} else if (userId) {
 		pipeline = [
 			{
@@ -77,7 +87,7 @@ async function getPaymentReceipts(req, res) {
 }
 
 async function savePaymentReceipt(req, res) {
-	const { userId, username, email, title, transactionId, amount, status } =
+	const { userId, username, email, pkg, transactionId, amount, status } =
 		req.body;
 
 	// Validate the userId
@@ -89,7 +99,7 @@ async function savePaymentReceipt(req, res) {
 			userId,
 			username,
 			email,
-			title,
+			pkg,
 			transactionId,
 			amount,
 			status,
