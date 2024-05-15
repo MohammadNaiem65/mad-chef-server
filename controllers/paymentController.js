@@ -45,7 +45,7 @@ async function getPaymentReceipts(req, res) {
 			pipeline = [
 				{
 					$match: {
-						userId: new ObjectId('6636632fe662b85104099c5d'),
+						userId: new ObjectId(userId),
 					},
 				},
 			];
@@ -53,7 +53,7 @@ async function getPaymentReceipts(req, res) {
 			pipeline = [
 				{
 					$match: {
-						userId: new ObjectId('6636632fe662b85104099c5d'),
+						userId: new ObjectId(userId),
 						status: filter,
 					},
 				},
