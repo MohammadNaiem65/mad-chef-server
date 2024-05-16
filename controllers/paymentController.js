@@ -90,8 +90,10 @@ async function savePaymentReceipt(req, res) {
 	const { userId, username, email, pkg, transactionId, amount, status } =
 		req.body;
 
-	// Validate the userId
-	validateMongoDBId(userId, res);
+	// Stop the execution if the userId exists and is invalid
+	if (userId !== undefined && !validateMongoDBId(userId, res)) {
+		return;
+	}
 
 	try {
 		// Save the payment receipt to DB
@@ -111,8 +113,28 @@ async function savePaymentReceipt(req, res) {
 	}
 }
 
+async function deletePaymentReceipt(req, res) {
+	const { receiptId } = req.query;
+
+	// Stop the execution if the receiptId exists and is invalid
+	if (receiptId !== undefined && !validateMongoDBId(receiptId, res)) {
+		return;
+	}
+
+	try {
+		const result = await PaymentReceipt.deleteOne({
+			_id: new ObjectId(receiptId),
+		});
+
+		res.json({ msg: 'Successful', data: result });
+	} catch (err) {
+		res.status(500).json({ msg: 'An error occurred', data: err });
+	}
+}
+
 module.exports = {
 	createPaymentIntent,
 	getPaymentReceipts,
 	savePaymentReceipt,
+	deletePaymentReceipt,
 };
