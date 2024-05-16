@@ -10,6 +10,7 @@ const Like = require('../models/Like');
 const Rating = require('../models/Rating');
 const ChefReview = require('../models/ChefReview');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
+const PaymentReceipt = require('../models/PaymentReceipt');
 
 // utility functions
 /**
@@ -84,6 +85,36 @@ async function verifyUserEmail(req, res) {
 		}
 	} catch (error) {
 		console.error('Error verifying ID token:', error);
+		res.status(500).send('Internal server error');
+	}
+}
+
+async function updateUserPackage(req, res) {
+	const { userId } = req.user;
+
+	try {
+		// Check if the user paid for the package
+		const paymentReceipt = await PaymentReceipt.find({
+			userId,
+			pkg: 'student/pro-pkg',
+			status: 'succeeded',
+		});
+
+		if (!paymentReceipt.length) {
+			return res.status(400).json({ msg: 'No payment receipt found' });
+		} else {
+			const result = await User.updateOne(
+				{ _id: userId },
+				{ pkg: 'pro' }
+			);
+
+			if (result.modifiedCount > 0) {
+				return res.status(200).json({ msg: 'Successfully updated' });
+			} else {
+				return res.status(304).json({ msg: 'Something went wrong' });
+			}
+		}
+	} catch (error) {
 		res.status(500).send('Internal server error');
 	}
 }
@@ -460,6 +491,7 @@ async function handleUserRolePromotion(req, res) {
 module.exports = {
 	getUser,
 	verifyUserEmail,
+	updateUserPackage,
 	addUserBookmark,
 	getUserBookmarks,
 	removeUserBookmark,

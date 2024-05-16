@@ -22,12 +22,14 @@ const {
 	editRecipeRating,
 	editChefReview,
 	verifyUserEmail,
+	updateUserPackage,
 } = require('../controllers/userController');
 
 const router = express.Router();
 
 router.get('/user/verify-email', verifyUserEmail);
 router.get(['/user/:id', '/:id'], checkAuth, getUser);
+router.patch('/user/update-package', checkAuth, updateUserPackage)
 
 // ! Bookmarks related routes
 router.get(['/user/:id/bookmarks', '/:id/bookmarks'], checkAuth, getUserBookmarks);
