@@ -39,6 +39,7 @@ async function authenticate(req, res) {
 			userEmail: email,
 			userId: decodedToken?._id,
 			firebaseId: uid,
+			emailVerified: email_verified,
 			role: decodedToken?.role,
 			pkg: decodedToken?.pkg,
 		};
@@ -164,6 +165,8 @@ async function reAuthenticate(req, res) {
 				const userData = {
 					userEmail: decodedToken.userEmail,
 					userId: decodedToken.userId,
+					firebaseId: decodedToken.firebaseId,
+					emailVerified: decodedToken.emailVerified,
 					role: decodedToken.role,
 					pkg: decodedToken.pkg,
 				};
