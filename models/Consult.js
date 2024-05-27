@@ -35,6 +35,11 @@ const consultSchema = new mongoose.Schema({
 		type: String,
 		required: true,
 	},
+	status: {
+		type: String,
+		enum: ['pending', 'accepted', 'rejected', 'completed', 'failed'],
+		required: true,
+	},
 });
 
 const Consult = mongoose.model('Consult', consultSchema);
