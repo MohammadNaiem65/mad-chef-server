@@ -3,6 +3,8 @@ const { Types } = require('mongoose');
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
+const generateJwtToken = require('../utility/generateJwtToken');
+
 const User = require('../models/User');
 const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
@@ -11,6 +13,7 @@ const Rating = require('../models/Rating');
 const ChefReview = require('../models/ChefReview');
 const RolePromotionApplicants = require('../models/RolePromotionApplicants');
 const PaymentReceipt = require('../models/PaymentReceipt');
+const RefreshToken = require('../models/RefreshToken');
 
 // utility functions
 /**
@@ -90,7 +93,7 @@ async function verifyUserEmail(req, res) {
 }
 
 async function updateUserPackage(req, res) {
-	const { userId } = req.user;
+	const { userId, firebaseId, userEmail, emailVerified, role } = req.user;
 
 	try {
 		// Check if the user paid for the package
@@ -103,13 +106,66 @@ async function updateUserPackage(req, res) {
 		if (!paymentReceipt.length) {
 			return res.status(400).json({ msg: 'No payment receipt found' });
 		} else {
+			// Update user's package in the DB
 			const result = await User.updateOne(
 				{ _id: userId },
 				{ pkg: 'pro' }
 			);
 
 			if (result.modifiedCount > 0) {
-				return res.status(200).json({ msg: 'Successfully updated' });
+				// Update the user's package in firebase
+				await admin.auth().setCustomUserClaims(firebaseId, {
+					_id: userId,
+					role,
+					pkg: 'pro',
+				});
+
+				// Store user data
+				const userData = {
+					userEmail,
+					userId,
+					firebaseId,
+					emailVerified,
+					role,
+					pkg: 'pro',
+				};
+
+				// Generate access and refresh tokens
+				const accessToken = generateJwtToken(
+					userData,
+					process.env.ACCESS_TOKEN_SECRET,
+					{ expiresIn: '1h' }
+				);
+
+				const refreshToken = generateJwtToken(
+					userData,
+					process.env.REFRESH_TOKEN_SECRET,
+					{ expiresIn: '30 days' }
+				);
+
+				// Save refresh token to database and delete one if an exists for the user
+				await RefreshToken.deleteOne({ userId: userData.userId });
+				await RefreshToken.create({
+					userId: userData.userId,
+					token: refreshToken,
+				});
+
+				// Send response to user
+				return res
+					.cookie(
+						process.env.REFRESH_TOKEN_COOKIE_NAME,
+						refreshToken,
+						{
+							maxAge: 30 * 24 * 60 * 60 * 1000,
+							httpOnly: true,
+							secure: process.env.NODE_ENV !== 'development',
+							sameSite: 'None',
+						}
+					)
+					.json({
+						msg: 'Successfully updated',
+						data: { user: userData, accessToken },
+					});
 			} else {
 				return res.status(304).json({ msg: 'Something went wrong' });
 			}
