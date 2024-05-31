@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const rolePromotionApplicantsSchema = new mongoose.Schema(
+const rolePromotionApplicantSchema = new mongoose.Schema(
 	{
 		usersId: {
 			type: mongoose.SchemaTypes.ObjectId,
@@ -22,9 +22,9 @@ const rolePromotionApplicantsSchema = new mongoose.Schema(
 	}
 );
 
-const RolePromotionApplicants = mongoose.model(
-	'RolePromotionApplicants',
-	rolePromotionApplicantsSchema
+const RolePromotionApplicant = mongoose.model(
+	'RolePromotionApplicant',
+	rolePromotionApplicantSchema
 );
 
-module.exports = RolePromotionApplicants;
+module.exports = RolePromotionApplicant;

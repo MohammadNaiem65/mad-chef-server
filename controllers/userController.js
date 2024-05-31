@@ -11,7 +11,7 @@ const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
 const Rating = require('../models/Rating');
 const ChefReview = require('../models/ChefReview');
-const RolePromotionApplicants = require('../models/RolePromotionApplicants');
+const RolePromotionApplicant = require('../models/RolePromotionApplicant');
 const PaymentReceipt = require('../models/PaymentReceipt');
 const RefreshToken = require('../models/RefreshToken');
 
@@ -24,7 +24,7 @@ const RefreshToken = require('../models/RefreshToken');
  * @returns {object}
  */
 function createRolePromotionDoc(id, role) {
-	return RolePromotionApplicants.create({
+	return RolePromotionApplicant.create({
 		usersId: id,
 		role: role,
 	});
@@ -471,7 +471,7 @@ async function handleUserRolePromotion(req, res) {
 	validateMongoDBId(userId, res);
 
 	try {
-		const requestedDocument = await RolePromotionApplicants.findById(
+		const requestedDocument = await RolePromotionApplicant.findById(
 			requestId
 		);
 
@@ -483,7 +483,7 @@ async function handleUserRolePromotion(req, res) {
 
 				if (!emailVerified) {
 					requestedDocument.status = 'rejected';
-					// update RolePromotionApplicants document
+					// update RolePromotionApplicant document
 					await requestedDocument.save();
 
 					res.json({
@@ -518,7 +518,7 @@ async function handleUserRolePromotion(req, res) {
 					// save Chef document
 					await roleUpgradedUser.save();
 
-					// update RolePromotionApplicants document
+					// update RolePromotionApplicant document
 					await requestedDocument.save();
 
 					// send response
@@ -528,7 +528,7 @@ async function handleUserRolePromotion(req, res) {
 				}
 			} else {
 				requestedDocument.status = 'rejected';
-				// update RolePromotionApplicants document
+				// update RolePromotionApplicant document
 				await requestedDocument.save();
 
 				// send response
