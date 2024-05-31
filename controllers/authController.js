@@ -5,18 +5,7 @@ const jwt = require('jsonwebtoken');
 // internal imports
 const User = require('./../models/User');
 const RefreshToken = require('./../models/RefreshToken');
-
-/**
- * @description Generates a JWT token using the provided data, secret key, and options.
- *
- * @param {Object} data - An object containing the data to be encoded in the token.
- * @param {string} secret - The secret key used for signing the token.
- * @param {Object} [options={}] - Additional options for the JWT token.
- * @returns {string} - The generated JWT token.
- */
-function generateToken(data, secret, options = {}) {
-	return jwt.sign(data, secret, options);
-}
+const generateJwtToken = require('./../utility/generateJwtToken');
 
 async function authenticate(req, res) {
 	// get firebase idToken as userToken
@@ -76,13 +65,13 @@ async function authenticate(req, res) {
 
 		// for login purpose - send access and refresh token
 		// generate access and refresh tokens
-		const accessToken = generateToken(
+		const accessToken = generateJwtToken(
 			userData,
 			process.env.ACCESS_TOKEN_SECRET,
 			{ expiresIn: '1h' }
 		);
 
-		const refreshToken = generateToken(
+		const refreshToken = generateJwtToken(
 			userData,
 			process.env.REFRESH_TOKEN_SECRET,
 			{ expiresIn: '30 days' }
@@ -172,13 +161,13 @@ async function reAuthenticate(req, res) {
 				};
 
 				// generate access and refresh tokens
-				const accessToken = generateToken(
+				const accessToken = generateJwtToken(
 					userData,
 					process.env.ACCESS_TOKEN_SECRET,
 					{ expiresIn: '1h' }
 				);
 
-				const refreshToken = generateToken(
+				const refreshToken = generateJwtToken(
 					userData,
 					process.env.REFRESH_TOKEN_SECRET,
 					{ expiresIn: '30 days' }
