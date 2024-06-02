@@ -17,6 +17,7 @@ const chefHandler = require('./handlers/chefHandler');
 const recipeHandler = require('./handlers/recipeHandler');
 const consultHandler = require('./handlers/consultHandler');
 const paymentHandler = require('./handlers/paymentHandler');
+const roleHandler = require('./handlers/roleHandler');
 
 // create app instance
 const app = express();
@@ -52,6 +53,7 @@ app.use('/chefs', chefHandler);
 app.use('/recipes', recipeHandler);
 app.use('/consults', consultHandler);
 app.use('/payments', paymentHandler);
+app.use('/roles', roleHandler);
 
 // listen app
 app.listen(port, () => {
