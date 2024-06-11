@@ -3,6 +3,7 @@ const { ObjectId } = mongoose.Types;
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const PaymentReceipt = require('../models/PaymentReceipt');
+const { json } = require('express');
 
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
 
@@ -15,18 +16,23 @@ async function createPaymentIntent(req, res) {
 
 	const finalAmount = parseFloat(amount.toFixed(2));
 
-	const paymentIntent = await stripe.paymentIntents.create({
-		amount: finalAmount,
-		currency: 'USD',
-		automatic_payment_methods: {
-			enabled: true,
-		},
-	});
+	try {
+		const paymentIntent = await stripe.paymentIntents.create({
+			amount: finalAmount,
+			currency: 'USD',
+			automatic_payment_methods: {
+				enabled: true,
+			},
+		});
 
-	res.send({
-		message: 'Successful',
-		data: { clientSecret: paymentIntent.client_secret },
-	});
+		res.send({
+			message: 'Successful',
+			data: { clientSecret: paymentIntent.client_secret },
+		});
+	} catch (err) {
+		console.log(err);
+		res.status(500).json({ msg: 'An error occurred', data: err });
+	}
 }
 
 async function getPaymentReceipts(req, res) {
@@ -115,15 +121,26 @@ async function savePaymentReceipt(req, res) {
 
 async function deletePaymentReceipt(req, res) {
 	const { receiptId } = req.query;
+	const { receiptIds } = req.body;
 
 	// Stop the execution if the receiptId exists and is invalid
 	if (receiptId !== undefined && !validateMongoDBId(receiptId, res)) {
 		return;
 	}
 
+	let idsToDelete = [];
+
+	// Decide the delete method
+	if (receiptId) {
+		idsToDelete = [receiptId];
+	} else if (receiptIds?.length > 0) {
+		idsToDelete = [...receiptIds];
+	}
+
 	try {
-		const result = await PaymentReceipt.deleteOne({
-			_id: new ObjectId(receiptId),
+		// Delete the payment receipt from DB
+		const result = await PaymentReceipt.deleteMany({
+			_id: { $in: idsToDelete },
 		});
 
 		res.json({ msg: 'Successful', data: result });
