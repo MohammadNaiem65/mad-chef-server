@@ -6,6 +6,7 @@ const createProjectionObject = require('../utility/createProjectionObject');
 
 const Chef = require('../models/Chef');
 const ChefReview = require('../models/ChefReview');
+const User = require('../models/User');
 const createSortObject = require('../utility/createSortObject');
 
 async function getChef(req, res) {
@@ -228,4 +229,47 @@ async function getChefReviews(req, res) {
 	}
 }
 
-module.exports = { getChef, getChefs, getChefReviews };
+async function createChefReview(req, res) {
+	const { chefId } = req.params;
+	const { userId, rating, message } = req.body;
+
+	// Check if chefId exists and is valid
+	if (!chefId || !isValidObjectId(chefId)) {
+		return res.status(400).json({ message: 'Provide valid chef id.' });
+	}
+
+	// Check if userId exists and is valid
+	if (!userId || !isValidObjectId(userId)) {
+		return res.status(400).json({ message: 'Provide valid user id.' });
+	}
+
+	try {
+		const user = await User.findById(userId).select('pkg');
+
+		if (user?.pkg === 'pro') {
+			const result = await ChefReview.create({
+				chefId,
+				userId,
+				rating,
+				message,
+			});
+
+			res.json({ message: 'Successful', data: result });
+		} else {
+			res.status(400).json({
+				message: 'Only pro users can give chef reviews.',
+			});
+		}
+	} catch (err) {
+		if (err?.code === 11000) {
+			res.status(400).json({
+				message: 'You have already given a review to this chef.',
+			});
+		} else {
+			console.log(err.code);
+			res.status(500).json(err);
+		}
+	}
+}
+
+module.exports = { getChef, getChefs, getChefReviews, createChefReview };
