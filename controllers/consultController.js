@@ -6,7 +6,7 @@ const validateMongoDBId = require('../utility/validateMongoDBId');
 
 async function getConsults(req, res) {
 	const { userId, role } = req.user;
-	const { status } = req.query;
+	const { status, date } = req.query;
 
 	let filter;
 	// Filter by the role
@@ -21,13 +21,31 @@ async function getConsults(req, res) {
 		filter.status = { $in: arr };
 	}
 
+	// Directly parse the date string into an object
+	const parsedDate = date ? JSON.parse(date) : null;
+
+	// Filter by the date
+	if (parsedDate?.startTime && parsedDate?.endTime) {
+		const startTime = new Date(parsedDate.startTime).toISOString();
+		const endTime = new Date(parsedDate.endTime).toISOString();
+		filter.date = {
+			$gte: startTime,
+			$lt: endTime,
+		};
+	} else if (parsedDate && (!parsedDate?.startTime || !parsedDate?.endTime)) {
+		return res.status(400).send({
+			msg: 'Date is invalid. Please provide startTime and endTime.',
+		});
+	}
+
 	try {
-		const docs = await Consult.find(filter);
+		const docs = await Consult.find(filter).sort({ date: 1 });
 
 		res.json({ msg: 'Successful', data: docs });
-	} catch (error) {
+	} catch (err) {
+		console.log(err);
 		res.status(500).send({
-			msg: err?.message || 'Something went wrong. Kindly try again!',
+			msg: err.message || 'Something went wrong. Kindly try again!',
 			data: err,
 		});
 	}
@@ -54,7 +72,7 @@ async function createConsultDoc(req, res) {
 			userEmail,
 			chefId: new ObjectId(chefId),
 			chefName,
-			date,
+			date: new Date(date).toISOString(),
 			startTime,
 			endTime,
 			status: 'pending',
@@ -92,7 +110,7 @@ async function cancelConsultDoc(req, res) {
 	}
 }
 
-async function manageConsultationUpdates(req, res) {
+async function manageConsultStatusUpdates(req, res) {
 	const { consultId } = req.params;
 	const { status } = req.body;
 
@@ -137,6 +155,6 @@ module.exports = {
 	getConsults,
 	createConsultDoc,
 	cancelConsultDoc,
-	manageConsultationUpdates,
+	manageConsultStatusUpdates,
 	deleteConsultDoc,
 };
