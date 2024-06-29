@@ -112,12 +112,31 @@ async function cancelConsultDoc(req, res) {
 
 async function manageConsultStatusUpdates(req, res) {
 	const { consultId } = req.params;
-	const { status } = req.body;
+	const { status, link } = req.body;
 
+	// Check if the status is provided
+	if (!status) {
+		return res.status(400).json({ message: 'Provide a valid status.' });
+	}
+
+	// Check if the status is 'accepted' and link is provided
+	if (status === 'accepted' && (!link || typeof link !== 'string')) {
+		return res.status(400).json({
+			msg: 'Link is required to accept the consultation request.',
+		});
+	}
+
+	let updateStage = {};
+
+	if (status === 'accepted' && link && typeof link === 'string') {
+		updateStage = { $set: { status: 'accepted', joinLink: link } };
+	} else {
+		updateStage = { status };
+	}
 	try {
 		const result = await Consult.updateOne(
 			{ _id: new ObjectId(consultId) },
-			{ status: status }
+			updateStage
 		);
 
 		res.json({ msg: 'Successful', data: result });
