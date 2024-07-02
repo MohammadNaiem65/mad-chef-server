@@ -14,6 +14,7 @@ const serviceAccountConfig = require('./firebase.config.json');
 const authHandler = require('./handlers/authHandler');
 const userHandler = require('./handlers/userHandler');
 const chefHandler = require('./handlers/chefHandler');
+const adminHandler = require('./handlers/adminHandler');
 const recipeHandler = require('./handlers/recipeHandler');
 const consultHandler = require('./handlers/consultHandler');
 const paymentHandler = require('./handlers/paymentHandler');
@@ -50,6 +51,7 @@ initializeApp({
 app.use('/auth', authHandler);
 app.use('/users', userHandler);
 app.use('/chefs', chefHandler);
+app.use('/admins', adminHandler);
 app.use('/recipes', recipeHandler);
 app.use('/consults', consultHandler);
 app.use('/payments', paymentHandler);
