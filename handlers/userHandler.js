@@ -3,9 +3,11 @@ const express = require('express');
 
 // internal imports
 const checkAuth = require('../middlewares/checkAuth');
+const checkAdmin = require('../middlewares/checkAdmin');
+
 const {
 	getUser,
-	applyToBeChef,
+	getUsers,
 	handleUserRolePromotion,
 	getUserBookmarks,
 	addUserBookmark,
@@ -27,9 +29,10 @@ const {
 
 const router = express.Router();
 
+router.get('/', checkAuth, checkAdmin, getUsers);
 router.get('/user/verify-email', verifyUserEmail);
 router.get(['/user/:id', '/:id'], checkAuth, getUser);
-router.patch('/user/update-package', checkAuth, updateUserPackage)
+router.patch('/user/update-package', checkAuth, updateUserPackage);
 
 // ! Bookmarks related routes
 router.get(['/user/:id/bookmarks', '/:id/bookmarks'], checkAuth, getUserBookmarks);
@@ -54,7 +57,6 @@ router.patch(['/user/:id/review/chef', '/:id/review/chef'], checkAuth, editChefR
 router.delete(['/user/:id/review/chef', '/:id/review/chef'], checkAuth, removeChefReview);
 
 // ! Role promotion related routes	
-router.post('/user/:id/apply-to-be-chef', checkAuth, applyToBeChef);
 router.post('/user/:id/requests/:requestId/action', checkAuth, handleUserRolePromotion);
 
 module.exports = router;

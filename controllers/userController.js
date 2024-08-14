@@ -4,6 +4,7 @@ const { Types } = require('mongoose');
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
 const generateJwtToken = require('../utility/generateJwtToken');
+const getCurrPage = require('../utility/getCurrPage');
 
 const User = require('../models/User');
 const Chef = require('../models/Chef');
@@ -14,21 +15,6 @@ const ChefReview = require('../models/ChefReview');
 const RolePromotionApplicant = require('../models/RolePromotionApplicant');
 const PaymentReceipt = require('../models/PaymentReceipt');
 const RefreshToken = require('../models/RefreshToken');
-
-// utility functions
-/**
- * @description Creates a new mongodb document of promoting the role of a user
- *
- * @param {string} id
- * @param {string} role
- * @returns {object}
- */
-function createRolePromotionDoc(id, role) {
-	return RolePromotionApplicant.create({
-		usersId: id,
-		role: role,
-	});
-}
 
 // middleware functions
 async function getUser(req, res) {
@@ -59,6 +45,64 @@ async function getUser(req, res) {
 		res.json({ msg: 'Successful', data: user });
 	} catch (error) {
 		res.status(500).json({ msg: 'An error occurred', data: error });
+	}
+}
+
+async function getUsers(req, res) {
+	const {
+		p,
+		page = 0,
+		l,
+		limit = process.env.USERS_PER_PAGE,
+		sort = 'name',
+		order = 'asc',
+	} = req.query;
+
+	// parse the _page and _limit query string
+	const _page = parseInt(p || page) - 1;
+	const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+
+	// Initialize pipeline options as an empty object
+	const sortObj = {};
+
+	// Set sort order field based on query
+	sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
+
+	const pipeline = [
+		{ $sort: sortObj },
+		{ $skip: (_page <= 0 ? 0 : _page) * _limit },
+		{ $limit: _limit },
+	];
+
+	try {
+		const users = await User.aggregate(pipeline);
+
+		// Count the total docs with filter
+		const totalUsers = await User.aggregate([
+			{ $sort: sortObj },
+			{
+				$count: 'totalUsers',
+			},
+		]);
+
+		// Calculate current page count of total rating count
+		const currPage = getCurrPage(
+			_page <= 0 ? 1 : _page + 1,
+			_limit,
+			totalUsers[0]?.totalUsers
+		);
+
+		res.json({
+			data: users,
+			meta: {
+				page: currPage,
+				totalCount:
+					totalUsers?.length > 0 ? totalUsers[0].totalUsers : 0,
+			},
+		});
+	} catch (error) {
+		console.log(error);
+		res.json(error);
 	}
 }
 
@@ -446,17 +490,6 @@ async function removeChefReview(req, res) {
 }
 
 // ! Role promotion related routes
-async function applyToBeChef(req, res) {
-	const id = req.params.id;
-
-	// check if the id is valid and send 400 status if invalid
-	validateMongoDBId(id, res);
-
-	const result = await createRolePromotionDoc(id, 'chef');
-
-	res.json({ msg: 'Successful', data: result });
-}
-
 async function handleUserRolePromotion(req, res) {
 	const { requestId } = req.params;
 	const actionResult = req.query.result;
@@ -546,6 +579,7 @@ async function handleUserRolePromotion(req, res) {
 
 module.exports = {
 	getUser,
+	getUsers,
 	verifyUserEmail,
 	updateUserPackage,
 	addUserBookmark,
@@ -562,6 +596,5 @@ module.exports = {
 	addChefReview,
 	editChefReview,
 	removeChefReview,
-	applyToBeChef,
 	handleUserRolePromotion,
 };
