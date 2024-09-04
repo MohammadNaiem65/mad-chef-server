@@ -18,7 +18,7 @@ async function getAdminData(req, res) {
 
 		res.status(200).json({ msg: 'Successful', data: admin });
 	} catch (error) {
-		console.log(error);
+		res.status(500);
 	}
 }
 

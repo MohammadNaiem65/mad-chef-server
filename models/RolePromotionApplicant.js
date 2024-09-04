@@ -1,30 +1,30 @@
 const mongoose = require('mongoose');
 
 const rolePromotionApplicantSchema = new mongoose.Schema(
-	{
-		usersId: {
-			type: mongoose.SchemaTypes.ObjectId,
-			ref: 'User',
-		},
-		role: {
-			type: String,
-			enum: ['chef', 'admin'],
-			required: true,
-		},
-		status: {
-			type: String,
-			enum: ['pending', 'accepted', 'rejected'],
-			default: 'pending',
-		},
-	},
-	{
-		timestamps: true,
-	}
+    {
+        usersId: {
+            type: mongoose.SchemaTypes.ObjectId,
+            ref: 'User',
+        },
+        role: {
+            type: String,
+            enum: ['chef', 'admin'],
+            required: true,
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'accepted', 'rejected'],
+            default: 'pending',
+        },
+    },
+    {
+        timestamps: true,
+    }
 );
 
 const RolePromotionApplicant = mongoose.model(
-	'RolePromotionApplicant',
-	rolePromotionApplicantSchema
+    'RolePromotionApplicant',
+    rolePromotionApplicantSchema
 );
 
 module.exports = RolePromotionApplicant;
