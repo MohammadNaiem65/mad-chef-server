@@ -5,6 +5,11 @@ const validateMongoDBId = require('../utility/validateMongoDBId');
 const createSortObject = require('../utility/createSortObject');
 const getCurrPage = require('../utility/getCurrPage');
 
+const APPLICATION_STATUS = {
+    202: 'accepted',
+    400: 'rejected',
+};
+
 /**
  * Creates a new RolePromotionApplicant document in the database.
  *
@@ -154,9 +159,82 @@ async function getRolePromotionApplication(req, res) {
     }
 }
 
+async function updatePromotionApplicationStatus(req, res) {
+    const { id, status } = req.query;
+
+    // Check if the document ID is valid
+    if (!validateMongoDBId(id, res)) {
+        return;
+    }
+
+    // Check if the status code is valid
+    if (!Object.keys(APPLICATION_STATUS).includes(status)) {
+        return res.status(400).json({ msg: 'Invalid status code' });
+    }
+
+    try {
+        const application = await RolePromotionApplicant.findById(id);
+
+        // Validate not to update accepted or rejected application
+        if (Object.values(APPLICATION_STATUS).includes(application.status)) {
+            return res.status(400).json({ msg: 'Status can not be updated' });
+        }
+
+        application.status = APPLICATION_STATUS[status];
+
+        const result = await application.save();
+
+        return res.json({
+            msg: 'Successful',
+            data: result,
+        });
+    } catch (err) {
+        res.status(500).json(err);
+    }
+}
+
+async function deletePromotionApplication(req, res) {
+    const { id: queryId } = req.query;
+    const { id: paramId } = req.params;
+
+    console.log(queryId, paramId);
+
+    const id = queryId || paramId;
+
+    // Check if the document ID is valid
+    if (!validateMongoDBId(id, res)) {
+        return;
+    }
+
+    try {
+        const application = await RolePromotionApplicant.findById(id);
+
+        // Validate not to update accepted or rejected application
+        if (
+            application.status === APPLICATION_STATUS[202] ||
+            application.status === APPLICATION_STATUS[400]
+        ) {
+            const result = await RolePromotionApplicant.deleteOne({ _id: id });
+
+            return res.json({
+                msg: 'Successful',
+                data: result,
+            });
+        } else {
+            return res.status(400).json({
+                msg: 'The document can not be deleted.',
+            });
+        }
+    } catch (err) {
+        res.status(500).json(err);
+    }
+}
+
 module.exports = {
     applyForPromotion,
     hasAppliedForPromotion,
     getRolePromotionApplication,
     getRolePromotionApplications,
+    updatePromotionApplicationStatus,
+    deletePromotionApplication,
 };

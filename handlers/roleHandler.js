@@ -7,6 +7,8 @@ const {
     hasAppliedForPromotion,
     getRolePromotionApplications,
     getRolePromotionApplication,
+    updatePromotionApplicationStatus,
+    deletePromotionApplication,
 } = require('../controllers/roleController');
 
 const router = express.Router();
@@ -24,6 +26,18 @@ router.get(
     checkAuth,
     checkAdmin,
     getRolePromotionApplications
+);
+router.patch(
+    '/update-promotion-application-status',
+    checkAuth,
+    checkAdmin,
+    updatePromotionApplicationStatus
+);
+router.delete(
+    '/delete-promotion-application/:id',
+    checkAuth,
+    checkAdmin,
+    deletePromotionApplication
 );
 
 module.exports = router;
