@@ -496,4 +496,63 @@ async function getRecipeRatings(req, res) {
     }
 }
 
-module.exports = { getRecipe, postRecipe, searchRecipes, getRecipeRatings };
+async function updateRecipeStatus(req, res) {
+    const { recipeId: paramId } = req.params;
+    const { status, recipeId: queryId } = req.query;
+
+    const recipeId = paramId || queryId;
+
+    if (!validateMongoDBId(recipeId, res)) {
+        return;
+    }
+
+    try {
+        const doc = await Recipe.findById(recipeId);
+
+        doc.status = status;
+
+        const result = await doc.save();
+
+        res.json({ message: 'Successful', data: result });
+    } catch (error) {
+        console.log(error);
+        res.json(error);
+    }
+}
+
+async function deleteRecipe(req, res) {
+    const { recipeId: paramId } = req.params;
+    const { recipeId: queryId } = req.query;
+
+    const recipeId = paramId || queryId;
+
+    if (!validateMongoDBId(recipeId, res)) {
+        return;
+    }
+
+    try {
+        const doc = await Recipe.findById(recipeId);
+
+        if (doc.status === 'rejected') {
+            const result = await Recipe.deleteOne({ _id: recipeId });
+
+            res.json({ message: 'Successfully deleted.', data: result });
+        } else {
+            res.status(400).json({
+                message: 'Only rejected recipes can be deleted.',
+            });
+        }
+    } catch (error) {
+        console.log(error);
+        res.json(error);
+    }
+}
+
+module.exports = {
+    getRecipe,
+    postRecipe,
+    searchRecipes,
+    getRecipeRatings,
+    updateRecipeStatus,
+    deleteRecipe,
+};
