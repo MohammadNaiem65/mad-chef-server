@@ -2,15 +2,53 @@ const { default: mongoose } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
 const getCurrPage = require('../utility/getCurrPage');
-const createProjectionObject = require('../utility/createProjectionObject');
 const Recipe = require('../models/Recipe');
 const Rating = require('../models/Rating');
 const validateMongoDBId = require('../utility/validateMongoDBId');
+const createProjectionObject = require('../utility/createProjectionObject');
+
+/**
+A function to generate a MongoDB query filter for recipe upload dates.
+@param {string} uploadDate - The type of upload date filter to apply.
+@returns {Object|null} - A MongoDB query filter object or null if the input is invalid.
+
+@example
+const todayFilter = getUploadDateFilter('today');
+// todayFilter = {
+//   $eq: [
+//     { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+//     '2022-01-01' // current date in 'YYYY-MM-DD' format
+//   ]
+// }
+ */
+function getUploadDateFilter(uploadDate) {
+    const date = new Date();
+    switch (uploadDate.toLowerCase()) {
+        case 'today':
+            return {
+                $eq: [
+                    {
+                        $dateToString: {
+                            format: '%Y-%m-%d',
+                            date: '$createdAt',
+                        },
+                    },
+                    date.toISOString().split('T')[0],
+                ],
+            };
+        case 'this month':
+            return { $eq: [{ $month: '$createdAt' }, date.getMonth() + 1] };
+        case 'this year':
+            return { $eq: [{ $year: '$createdAt' }, date.getFullYear()] };
+        default:
+            return null;
+    }
+}
 
 async function searchRecipes(req, res) {
     const {
         p,
-        page = 0,
+        page = 1,
         l,
         limit = process.env.RECIPES_PER_PAGE,
         data_filter,
@@ -18,114 +56,39 @@ async function searchRecipes(req, res) {
         order = 'desc',
         include = '',
         exclude = '',
-        role = 'user',
+        role = 'student',
     } = req.query;
 
-    // parse the data_filter query string, _page and _limit
     const parsedDataFilter = data_filter
         ? JSON.parse(decodeURIComponent(data_filter))
         : {};
-    const _page = parseInt(p || page) - 1;
-    const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+    const _page = Math.max(0, parseInt(p || page) - 1);
+    const _limit = Math.max(1, parseInt(l || limit));
+    const _role = role === 'student' ? 'user' : role;
 
-    // Validate the chefId if exists
     if (parsedDataFilter?.chefId) {
         validateMongoDBId(parsedDataFilter.chefId, res);
     }
 
-    // Initialize pipeline options as an empty object
-    let projection = {};
-    let includesObj = {};
-    let excludesObj = {};
-    const sortObj = {};
+    const sortObj = Object.fromEntries(
+        sort.split(',').map((el) => [el, order === 'desc' ? -1 : 1])
+    );
+    const projection = createProjectionObject(include, exclude);
 
-    // Set sort order field based on query
-    sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
+    const pipeline = [];
+    const filterPipeline = [];
 
-    // Only create projection objects if include or exclude is not an empty string
-    if (exclude && !include) {
-        excludesObj = createProjectionObject(exclude, {}, 0);
-        projection = { ...projection, ...excludesObj };
-    }
-    if (include && !exclude) {
-        includesObj = createProjectionObject(include, {}, 1);
-        projection = { ...projection, ...includesObj };
+    // Add role-based filter
+    if (_role !== 'admin') {
+        filterPipeline.push({ $match: { status: 'published' } });
     }
 
-    // ! Create the initial aggregation pipeline
-    let pipeline = [
-        { $sort: sortObj },
-        { $skip: (_page <= 0 ? 0 : _page) * _limit },
-        { $limit: _limit },
-    ];
+    // Add data filters
+    if (Object.keys(parsedDataFilter).length > 0) {
+        const { searchQuery, chefId, region, uploadDate } = parsedDataFilter;
 
-    // Add stage to calculate average rating
-    if (includesObj?.rating || !excludesObj?.rating) {
-        if (sortObj?.rating) {
-            pipeline.unshift(
-                {
-                    $lookup: {
-                        from: 'ratings',
-                        localField: '_id',
-                        foreignField: 'recipeId',
-                        as: 'rating',
-                    },
-                },
-                {
-                    $addFields: {
-                        rating: {
-                            $round: [{ $avg: '$rating.rating' }, 2],
-                        },
-                    },
-                }
-            );
-        } else {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: 'ratings',
-                        localField: '_id',
-                        foreignField: 'recipeId',
-                        as: 'rating',
-                    },
-                },
-                {
-                    $addFields: {
-                        rating: {
-                            $round: [{ $avg: '$rating.rating' }, 2],
-                        },
-                    },
-                }
-            );
-        }
-    }
-
-    // Add projection stage if needed
-    if (Object.keys(projection).length > 0) {
-        // Check if parsedDataFilter?.searchQuery exists and the first key's value is 0
-        if (
-            parsedDataFilter?.searchQuery &&
-            Object.values(projection)[0] === 0
-        ) {
-            pipeline.push({ $project: { chef_info: 0, ...projection } });
-        } else {
-            pipeline.push({ $project: projection });
-        }
-    }
-
-    // ! Add filter stages to Filter documents
-    let filterPipeline = [];
-
-    // parsedDataFilter = {searchQuery: 'string', chefId: _id, region: 'string', uploadDate: 'today' || 'thisMonth' || 'thisYear'}
-    if (parsedDataFilter) {
-        const { searchQuery, chefId, region, uploadDate } =
-            parsedDataFilter || {};
-        const multistageFilters = [];
-        const singleStageFilters = [];
-
-        // Search with recipe title or chef name
         if (searchQuery) {
-            multistageFilters.push(
+            filterPipeline.push(
                 {
                     $lookup: {
                         from: 'chefs',
@@ -137,15 +100,10 @@ async function searchRecipes(req, res) {
                 {
                     $match: {
                         $or: [
-                            {
-                                title: {
-                                    $regex: parsedDataFilter.searchQuery,
-                                    $options: 'i',
-                                },
-                            },
+                            { title: { $regex: searchQuery, $options: 'i' } },
                             {
                                 'chef_info.name': {
-                                    $regex: parsedDataFilter.searchQuery,
+                                    $regex: searchQuery,
                                     $options: 'i',
                                 },
                             },
@@ -155,181 +113,138 @@ async function searchRecipes(req, res) {
             );
         }
 
-        // Filter with chef Id
-        if (chefId) {
-            singleStageFilters.push({
-                $eq: ['$author', new ObjectId(chefId)],
-            });
+        const singleStageFilters = [];
+
+        if (chefId)
+            singleStageFilters.push({ $eq: ['$author', new ObjectId(chefId)] });
+        if (region) singleStageFilters.push({ $eq: ['$region', region] });
+
+        if (uploadDate) {
+            const dateFilter = getUploadDateFilter(uploadDate);
+            if (dateFilter) singleStageFilters.push(dateFilter);
         }
 
-        // Filter with upload date
-        if (uploadDate && typeof uploadDate === 'string') {
-            const date = new Date();
-
-            // Add stage to filter by upload date
-            switch (uploadDate.toLowerCase()) {
-                case 'today': {
-                    const year = date.getFullYear();
-                    const month = `0${date.getMonth() + 1}`.slice(-2); // Ensures two digits for month
-                    const day = `0${date.getDate()}`.slice(-2); // Ensures two digits for day
-
-                    const formattedDate = `${year}-${month}-${day}`;
-                    singleStageFilters.push({
-                        $eq: [
-                            {
-                                $dateToString: {
-                                    format: '%Y-%m-%d',
-                                    date: '$createdAt',
-                                },
-                            },
-                            formattedDate,
-                        ],
-                    });
-                    break;
-                }
-
-                case 'this month':
-                    const month = date.getMonth() + 1;
-
-                    singleStageFilters.push({
-                        $eq: [{ $month: '$createdAt' }, month],
-                    });
-                    break;
-
-                case 'this year':
-                    const year = date.getFullYear();
-
-                    singleStageFilters.push({
-                        $eq: [{ $year: '$createdAt' }, year],
-                    });
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        // Filter by region
-        if (region) {
-            singleStageFilters.push({
-                $eq: ['$region', region],
-            });
-        }
-
-        // Evaluate the final filterPipeline
         if (singleStageFilters.length > 0) {
-            filterPipeline = [
-                ...multistageFilters,
-                {
-                    $match: {
-                        $expr: {
-                            $and: singleStageFilters,
-                        },
-                    },
-                },
-            ];
-        } else {
-            filterPipeline = [...multistageFilters];
+            filterPipeline.push({
+                $match: { $expr: { $and: singleStageFilters } },
+            });
         }
     }
 
-    // send only the 'published' documents if the user is a general user
-    if (role === 'user') {
-        filterPipeline.unshift({
-            $match: {
-                status: 'published',
+    // Add rating calculation if needed
+    const shouldIncludeRating = projection.rating !== 0;
+    if (shouldIncludeRating) {
+        pipeline.push(
+            {
+                $lookup: {
+                    from: 'ratings',
+                    localField: '_id',
+                    foreignField: 'recipeId',
+                    as: 'rating',
+                },
             },
-        });
+            {
+                $addFields: {
+                    rating: { $round: [{ $avg: '$rating.rating' }, 2] },
+                },
+            }
+        );
+    }
+
+    // Add main pipeline stages
+    pipeline.push(
+        { $sort: sortObj },
+        { $skip: _page * _limit },
+        { $limit: _limit }
+    );
+
+    // Add projection if needed
+    if (Object.keys(projection).length > 0) {
+        pipeline.push({ $project: projection });
     }
 
     try {
-        // Search recipes with a combination of filter and main pipeline
-        const recipes = await Recipe.aggregate([
-            ...filterPipeline,
-            ...pipeline,
+        const [recipes, totalRecipes] = await Promise.all([
+            Recipe.aggregate([...filterPipeline, ...pipeline]),
+            Recipe.aggregate([...filterPipeline, { $count: 'total' }]),
         ]);
 
-        // Count total number of documents match the filter	pipeline
-        const totalRecipes = await Recipe.aggregate([
-            ...filterPipeline,
-            {
-                $count: 'totalRecipes',
-            },
-        ]);
-
-        const currPage = getCurrPage(
-            _page <= 0 ? 1 : _page + 1,
-            _limit,
-            totalRecipes[0]?.totalRecipes
-        );
+        const totalCount = totalRecipes[0]?.total || 0;
+        const currPage = getCurrPage(_page + 1, _limit, totalCount);
 
         res.json({
             data: recipes,
             meta: {
                 page: currPage,
-                totalCount:
-                    totalRecipes?.length > 0 ? totalRecipes[0].totalRecipes : 0,
+                totalCount: totalCount,
             },
         });
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.error(error);
+        res.status(500).json({
+            error: 'An error occurred while searching recipes',
+        });
     }
 }
 
 async function getRecipe(req, res) {
     const { recipeId } = req.params;
 
+    // Check if recipeId is provided
     if (!recipeId) {
         return res
             .status(400)
             .json({ message: 'An ID is required to get a recipe.' });
     }
 
+    // Validate the MongoDB ID
     if (!validateMongoDBId(recipeId, res)) {
         return;
     }
 
     try {
-        const recipe = await Recipe.findById(recipeId);
-        const rating = await Rating.aggregate([
-            {
-                $match: {
-                    recipeId: new ObjectId(recipeId),
-                },
-            },
-            {
-                $group: {
-                    _id: '$recipeId',
-                    rating: {
-                        $avg: '$rating',
-                    },
-                    totalCount: {
-                        $sum: 1,
+        // Fetch recipe and calculate average rating concurrently
+        const [recipe, ratingResults] = await Promise.all([
+            Recipe.findById(recipeId),
+            Rating.aggregate([
+                { $match: { recipeId: new ObjectId(recipeId) } },
+                {
+                    $group: {
+                        _id: '$recipeId',
+                        averageRating: { $avg: '$rating' },
+                        totalCount: { $sum: 1 },
                     },
                 },
-            },
+            ]),
         ]);
 
-        if (recipe?._id) {
-            const result = {
-                ...recipe?._doc,
-                rating: rating?.length
-                    ? Number.parseFloat(rating[0]?.rating.toFixed(1))
-                    : null,
-                totalRating: rating?.length ? rating[0]?.totalCount : null,
-            };
-
-            res.json({
-                message: 'Successful',
-                data: result,
-            });
-        } else {
-            res.status(404).send('Something went wrong. Kindly try again!');
+        // If recipe not found, return 404
+        if (!recipe) {
+            return res.status(404).json({ message: 'Recipe not found.' });
         }
+
+        // Extract rating information
+        const ratingInfo = ratingResults[0] || {};
+
+        // Prepare the response object
+        const result = {
+            ...recipe.toObject(),
+            rating: ratingInfo.averageRating
+                ? Number(ratingInfo.averageRating.toFixed(1))
+                : null,
+            totalRating: ratingInfo.totalCount || null,
+        };
+
+        res.json({
+            message: 'Successful',
+            data: result,
+        });
     } catch (err) {
-        console.log(err);
-        res.status(500).json(err);
+        console.error('Error in getRecipe:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 
@@ -356,107 +271,80 @@ async function postRecipe(req, res) {
 }
 
 async function getRecipeRatings(req, res) {
+    // Extract and parse query parameters
     const {
         p,
-        page = 0,
+        page = 1,
         l,
         limit = process.env.RECIPES_PER_PAGE,
         data_filter,
-        sort = 'rating',
         order = 'desc',
         include = '',
         exclude = '',
     } = req.query;
 
-    // parse the data_filter query string, _page and _limit
+    // Parse data filter and set pagination parameters
     const parsedDataFilter = data_filter
         ? JSON.parse(decodeURIComponent(data_filter))
         : {};
-    const _page = parseInt(p || page) - 1;
-    const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+    const _page = Math.max(0, parseInt(p || page) - 1); // Ensure page is not negative
+    const _limit = Math.max(1, parseInt(l || limit)); // Ensure limit is at least 1
 
-    // Validate recipeId and userId if exists
+    // Validate MongoDB IDs if present in the filter
     if (parsedDataFilter?.recipeId) {
-        validateMongoDBId(parsedDataFilter.recipeId);
+        if (!validateMongoDBId(parsedDataFilter.recipeId, res)) {
+            return;
+        }
     }
     if (parsedDataFilter?.userId) {
-        validateMongoDBId(parsedDataFilter.userId);
+        if (!validateMongoDBId(parsedDataFilter.userId, res)) {
+            return;
+        }
     }
 
-    // Initialize pipeline options as an empty object
-    let projection = {};
-    let includesObj = {};
-    let excludesObj = {};
-    const sortObj = {};
+    // Create projection object based on include/exclude parameters
+    const projection = createProjectionObject(include, exclude);
 
-    // Set sort order field based on query
-    sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
-
-    // Only create projection objects if include or exclude is not an empty string
-    if (exclude && !include) {
-        excludesObj = createProjectionObject(exclude, {}, 0);
-        projection = { ...projection, ...excludesObj };
-    }
-    if (include && !exclude) {
-        includesObj = createProjectionObject(include, {}, 1);
-        projection = { ...projection, ...includesObj };
-    }
-
-    // ! Create the initial aggregation pipeline
-    let pipeline = [
-        { $sort: sortObj },
-        { $skip: (_page <= 0 ? 0 : _page) * _limit },
+    // Initialize aggregation pipeline
+    const pipeline = [
+        { $sort: { rating: order === 'desc' ? -1 : 1 } },
+        { $skip: _page * _limit },
         { $limit: _limit },
     ];
 
-    // Match the specified filters
+    // Add $match stage if filters are provided
     if (Object.keys(parsedDataFilter).length > 0) {
-        if (parsedDataFilter?.recipeId) {
-            pipeline.unshift({
-                $match: { recipeId: new ObjectId(parsedDataFilter?.recipeId) },
-            });
-        }
-        if (parsedDataFilter?.userId) {
-            pipeline.unshift({
-                $match: { userId: new ObjectId(parsedDataFilter?.userId) },
-            });
-        }
+        const match = {};
+        if (parsedDataFilter.recipeId)
+            match.recipeId = new ObjectId(parsedDataFilter.recipeId);
+        if (parsedDataFilter.userId)
+            match.userId = new ObjectId(parsedDataFilter.userId);
+        if (Object.keys(match).length > 0) pipeline.unshift({ $match: match });
     }
 
-    // Include extra data if include has been specified
-    if (includesObj) {
-        const addFields = {};
-        if (includesObj?.username) {
-            addFields.username = {
-                $arrayElemAt: ['$userDetails.name', 0],
-            };
-        }
-        if (includesObj?.userImg) {
-            addFields.userImg = {
-                $arrayElemAt: ['$userDetails.img', 0],
-            };
-        }
-
-        if (Object.keys(addFields).length > 0) {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: 'users',
-                        localField: 'userId',
-                        foreignField: '_id',
-                        as: 'userDetails',
-                    },
+    // Add $lookup stage if username or userImg is requested
+    if (include.includes('username') || include.includes('userImg')) {
+        pipeline.push(
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'userId',
+                    foreignField: '_id',
+                    as: 'userDetails',
                 },
-                {
-                    $addFields: addFields,
+            },
+            {
+                $addFields: {
+                    ...(include.includes('username') && {
+                        username: { $arrayElemAt: ['$userDetails.name', 0] },
+                    }),
+                    ...(include.includes('userImg') && {
+                        userImg: { $arrayElemAt: ['$userDetails.img', 0] },
+                    }),
                 },
-                {
-                    $project: {
-                        userDetails: 0,
-                    },
-                }
-            );
-        }
+            },
+            { $project: { userDetails: 0 } } // Remove userDetails array after extracting required fields
+        );
     }
 
     // Add projection stage if needed
@@ -465,34 +353,23 @@ async function getRecipeRatings(req, res) {
     }
 
     try {
-        const ratings = await Rating.aggregate(pipeline);
-
-        // Aggregate the total rating count the the filter
-        const totalRatings = await Rating.aggregate([
-            { $sort: sortObj },
-            {
-                $count: 'totalRatings',
-            },
+        // Execute aggregation pipeline and count total documents concurrently
+        const [ratings, totalRatings] = await Promise.all([
+            Rating.aggregate(pipeline),
+            Rating.countDocuments(parsedDataFilter),
         ]);
 
-        // Calculate current page count of total rating count
-        const currPage = getCurrPage(
-            _page <= 0 ? 1 : _page + 1,
-            _limit,
-            totalRatings[0]?.totalRatings
-        );
-
+        // Send response with ratings data and metadata
         res.json({
             data: ratings,
             meta: {
-                page: currPage,
-                totalCount:
-                    totalRatings?.length > 0 ? totalRatings[0].totalRatings : 0,
+                page: getCurrPage(_page + 1, _limit, totalRatings),
+                totalCount: totalRatings,
             },
         });
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.error(error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 }
 
