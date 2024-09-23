@@ -1,9 +1,11 @@
 const admin = require('firebase-admin');
-const { Types } = require('mongoose');
+const { default: mongoose } = require('mongoose');
+const { ObjectId } = mongoose.Types;
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
 const generateJwtToken = require('../utility/generateJwtToken');
+const createSortObject = require('../utility/createSortObject');
 const getCurrPage = require('../utility/getCurrPage');
 
 const User = require('../models/User');
@@ -18,91 +20,89 @@ const RefreshToken = require('../models/RefreshToken');
 
 // middleware functions
 async function getUser(req, res) {
-    const id = req.params.id;
+    const { id } = req.params;
     const { include, exclude } = req.query;
 
-    // check if the id is valid and send 400 status if invalid
-    if (!validateMongoDBId(id, res)) {
-        return; // Stop execution if the ID is invalid
+    // Validate MongoDB ID
+    if (!validateMongoDBId(id)) {
+        return;
     }
 
-    // Initialize projection options as an empty object
-    let projection = {};
-
-    // Only create projection objects if include or exclude is not an empty string
-    if (include && !exclude) {
-        includesObj = createProjectionObject(include, {}, 1);
-        projection = { ...projection, ...includesObj };
-    }
-    if (exclude && !include) {
-        excludesObj = createProjectionObject(exclude, {}, 0);
-        projection = { ...projection, ...excludesObj };
-    }
+    // Create projection object based on include/exclude parameters
+    const projection = createProjectionObject(include, exclude);
 
     try {
         const user = await User.findById(id, projection);
 
-        res.json({ msg: 'Successful', data: user });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({ message: 'Successful', data: user });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        console.error('Error fetching user:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
 }
 
 async function getUsers(req, res) {
     const {
         p,
-        page = 0,
+        page = 1,
         l,
         limit = process.env.USERS_PER_PAGE,
         sort = 'name',
         order = 'asc',
+        include = '',
+        exclude = '',
     } = req.query;
 
-    // parse the _page and _limit query string
-    const _page = parseInt(p || page) - 1;
-    const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
+    // Ensure page and limit are positive integers
+    const _page = Math.max(0, parseInt(p || page) - 1);
+    const _limit = Math.max(1, parseInt(l || limit));
 
-    // Initialize pipeline options as an empty object
-    const sortObj = {};
+    // Create sort object based on query
+    const sortObj = createSortObject(sort, order);
 
-    // Set sort order field based on query
-    sort.split(',').map((el) => (sortObj[el] = order === 'desc' ? -1 : 1));
+    // Create projection object based on include/exclude parameters
+    const projection = createProjectionObject(include, exclude);
 
     const pipeline = [
         { $sort: sortObj },
-        { $skip: (_page <= 0 ? 0 : _page) * _limit },
+        { $skip: _page * _limit },
         { $limit: _limit },
     ];
 
-    try {
-        const users = await User.aggregate(pipeline);
+    // Only add $project stage if projection is not empty
+    if (Object.keys(projection).length > 0) {
+        pipeline.push({ $project: projection });
+    }
 
-        // Count the total docs with filter
-        const totalUsers = await User.aggregate([
-            { $sort: sortObj },
-            {
-                $count: 'totalUsers',
-            },
+    try {
+        const [users, totalUsersResult] = await Promise.all([
+            User.aggregate(pipeline),
+            User.aggregate([{ $count: 'total' }]),
         ]);
 
-        // Calculate current page count of total rating count
-        const currPage = getCurrPage(
-            _page <= 0 ? 1 : _page + 1,
-            _limit,
-            totalUsers[0]?.totalUsers
-        );
+        const totalUsers = totalUsersResult[0]?.total || 0;
+        const currPage = getCurrPage(_page + 1, _limit, totalUsers);
 
         res.json({
             data: users,
             meta: {
                 page: currPage,
-                totalCount:
-                    totalUsers?.length > 0 ? totalUsers[0].totalUsers : 0,
+                totalCount: totalUsers,
             },
         });
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.error('Error in getUsers:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
     }
 }
 
@@ -162,81 +162,79 @@ async function updateUserPackage(req, res) {
 
     try {
         // Check if the user paid for the package
-        const paymentReceipt = await PaymentReceipt.find({
+        const paymentExists = await PaymentReceipt.exists({
             userId,
             pkg: 'student/pro-pkg',
             status: 'succeeded',
         });
 
-        if (!paymentReceipt.length) {
-            return res.status(400).json({ msg: 'No payment receipt found' });
-        } else {
-            // Update user's package in the DB
-            const result = await User.updateOne(
-                { _id: userId },
-                { pkg: 'pro' }
-            );
-
-            if (result.modifiedCount > 0) {
-                // Update the user's package in firebase
-                await admin.auth().setCustomUserClaims(firebaseId, {
-                    _id: userId,
-                    role,
-                    pkg: 'pro',
-                });
-
-                // Store user data
-                const userData = {
-                    userEmail,
-                    userId,
-                    firebaseId,
-                    emailVerified,
-                    role,
-                    pkg: 'pro',
-                };
-
-                // Generate access and refresh tokens
-                const accessToken = generateJwtToken(
-                    userData,
-                    process.env.ACCESS_TOKEN_SECRET,
-                    { expiresIn: '1h' }
-                );
-
-                const refreshToken = generateJwtToken(
-                    userData,
-                    process.env.REFRESH_TOKEN_SECRET,
-                    { expiresIn: '30 days' }
-                );
-
-                // Save refresh token to database and delete one if an exists for the user
-                await RefreshToken.deleteOne({ userId: userData.userId });
-                await RefreshToken.create({
-                    userId: userData.userId,
-                    token: refreshToken,
-                });
-
-                // Send response to user
-                return res
-                    .cookie(
-                        process.env.REFRESH_TOKEN_COOKIE_NAME,
-                        refreshToken,
-                        {
-                            maxAge: 30 * 24 * 60 * 60 * 1000,
-                            httpOnly: true,
-                            secure: process.env.NODE_ENV !== 'development',
-                            sameSite: 'None',
-                        }
-                    )
-                    .json({
-                        msg: 'Successfully updated',
-                        data: { user: userData, accessToken },
-                    });
-            } else {
-                return res.status(304).json({ msg: 'Something went wrong' });
-            }
+        if (!paymentExists) {
+            return res
+                .status(400)
+                .json({ message: 'No payment receipt found' });
         }
+
+        // Update user's package in the DB
+        const result = await User.updateOne({ _id: userId }, { pkg: 'pro' });
+
+        if (result.modifiedCount === 0) {
+            return res
+                .status(304)
+                .json({ message: 'User package already up to date' });
+        }
+
+        // Update the user's package in Firebase
+        await admin.auth().setCustomUserClaims(firebaseId, {
+            _id: userId,
+            role,
+            pkg: 'pro',
+        });
+
+        // Prepare user data for token generation
+        const userData = {
+            userEmail,
+            userId,
+            firebaseId,
+            emailVerified,
+            role,
+            pkg: 'pro',
+        };
+
+        // Generate access and refresh tokens
+        const [accessToken, refreshToken] = await Promise.all([
+            generateJwtToken(userData, process.env.ACCESS_TOKEN_SECRET, {
+                expiresIn: '1h',
+            }),
+            generateJwtToken(userData, process.env.REFRESH_TOKEN_SECRET, {
+                expiresIn: '30 days',
+            }),
+        ]);
+
+        // Update refresh token in the database
+        await RefreshToken.findOneAndUpdate(
+            { userId: userData.userId },
+            { token: refreshToken },
+            { upsert: true, new: true }
+        );
+
+        // Send response to user
+        return res
+            .cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+                maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+                httpOnly: true,
+                secure: process.env.NODE_ENV !== 'development',
+                sameSite: 'None',
+            })
+            .json({
+                message: 'Package successfully updated to pro',
+                data: { user: userData, accessToken },
+            });
     } catch (error) {
-        res.status(500).send('Internal server error');
+        console.error('Error in updateUserPackage:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
     }
 }
 
@@ -244,17 +242,24 @@ async function updateUserPackage(req, res) {
 async function getUserBookmarks(req, res) {
     const { id } = req.params;
 
-    // validate user id
-    validateMongoDBId(id, res);
+    if (!validateMongoDBId(id)) {
+        return;
+    }
 
     try {
-        const bookmarks = await Bookmark.find({
-            userId: new Types.ObjectId(id),
-        });
+        // Find bookmarks for the user
+        const bookmarks = await Bookmark.find({ userId: id });
 
-        res.json({ msg: 'Successful', data: bookmarks });
+        res.json({
+            message: 'Bookmarks retrieved successfully',
+            data: bookmarks,
+        });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        console.error('Error in getUserBookmarks:', error);
+        res.status(500).json({
+            message: 'An error occurred while fetching bookmarks',
+            data: null,
+        });
     }
 }
 
@@ -263,18 +268,21 @@ async function addUserBookmark(req, res) {
     const { recipeId } = req.query;
 
     // validate user id and recipe id
-    validateMongoDBId(id, res);
-    validateMongoDBId(recipeId, res);
+    if (!validateMongoDBId(id, res)) {
+        return;
+    } else if (!validateMongoDBId(recipeId, res)) {
+        return;
+    }
 
     try {
         const result = await Bookmark.create({
-            userId: new Types.ObjectId(id),
-            recipeId: new Types.ObjectId(recipeId),
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -282,16 +290,18 @@ async function removeUserBookmark(req, res) {
     const { docId } = req.query;
 
     // validate user id and recipe id
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
         const result = await Bookmark.deleteOne({
-            _id: new Types.ObjectId(docId),
+            _id: new ObjectId(docId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -300,16 +310,18 @@ async function getUserLikes(req, res) {
     const { id } = req.params;
 
     // validate user id
-    validateMongoDBId(id, res);
+    if (!validateMongoDBId(id, res)) {
+        return;
+    }
 
     try {
         const likes = await Like.find({
-            userId: new Types.ObjectId(id),
+            userId: new ObjectId(id),
         });
 
-        res.json({ msg: 'Successful', data: likes });
+        res.json({ message: 'Successful', data: likes });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -318,18 +330,19 @@ async function addUserLike(req, res) {
     const { recipeId } = req.query;
 
     // validate user id and recipe id
-    validateMongoDBId(id, res);
-    validateMongoDBId(recipeId, res);
+    if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
+        return;
+    }
 
     try {
         const result = await Like.create({
-            userId: new Types.ObjectId(id),
-            recipeId: new Types.ObjectId(recipeId),
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -337,16 +350,18 @@ async function removeUserLike(req, res) {
     const { docId } = req.query;
 
     // validate recipe id
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
         const result = await Like.deleteOne({
-            _id: new Types.ObjectId(docId),
+            _id: new ObjectId(docId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -355,16 +370,18 @@ async function getRecipeRatings(req, res) {
     const { id } = req.params;
 
     // validate user id
-    validateMongoDBId(id, res);
+    if (!validateMongoDBId(id, res)) {
+        return;
+    }
 
     try {
         const ratings = await Rating.find({
-            userId: new Types.ObjectId(id),
+            userId: new ObjectId(id),
         });
 
-        res.json({ msg: 'Successful', data: ratings });
+        res.json({ message: 'Successful', data: ratings });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -378,15 +395,15 @@ async function addRecipeRating(req, res) {
 
     try {
         const result = await Rating.create({
-            recipeId: new Types.ObjectId(recipeId),
-            userId: new Types.ObjectId(userId),
+            recipeId: new ObjectId(recipeId),
+            userId: new ObjectId(userId),
             rating,
             message,
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -399,7 +416,7 @@ async function editRecipeRating(req, res) {
 
     try {
         const result = await Rating.updateOne(
-            { _id: new Types.ObjectId(docId) },
+            { _id: new ObjectId(docId) },
             {
                 rating,
                 message,
@@ -407,9 +424,9 @@ async function editRecipeRating(req, res) {
             { runValidators: true }
         );
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -421,12 +438,12 @@ async function removeRecipeRating(req, res) {
 
     try {
         const result = await Rating.deleteOne({
-            _id: new Types.ObjectId(docId),
+            _id: new ObjectId(docId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -439,12 +456,12 @@ async function getChefReviews(req, res) {
 
     try {
         const reviews = await ChefReview.find({
-            userId: new Types.ObjectId(id),
+            userId: new ObjectId(id),
         });
 
-        res.json({ msg: 'Successful', data: reviews });
+        res.json({ message: 'Successful', data: reviews });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -458,15 +475,15 @@ async function addChefReview(req, res) {
 
     try {
         const result = await ChefReview.create({
-            chefId: new Types.ObjectId(chefId),
-            userId: new Types.ObjectId(userId),
+            chefId: new ObjectId(chefId),
+            userId: new ObjectId(userId),
             rating,
             message,
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -479,7 +496,7 @@ async function editChefReview(req, res) {
 
     try {
         const result = await ChefReview.updateOne(
-            { _id: new Types.ObjectId(docId) },
+            { _id: new ObjectId(docId) },
             {
                 rating,
                 message,
@@ -487,9 +504,9 @@ async function editChefReview(req, res) {
             { runValidators: true }
         );
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -501,12 +518,12 @@ async function removeChefReview(req, res) {
 
     try {
         const result = await ChefReview.deleteOne({
-            _id: new Types.ObjectId(docId),
+            _id: new ObjectId(docId),
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({ message: 'Successful', data: result });
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
@@ -517,9 +534,9 @@ async function handleUserRolePromotion(req, res) {
     const { userId, firebaseId } = req.user;
 
     if (!actionResult) {
-        return res.status(400).json({ msg: 'No action parameter found!' });
+        return res.status(400).json({ message: 'No action parameter found!' });
     } else if (!requestId) {
-        return res.status(400).json({ msg: 'Request id is required!' });
+        return res.status(400).json({ message: 'Request id is required!' });
     }
 
     validateMongoDBId(userId, res);
@@ -541,7 +558,8 @@ async function handleUserRolePromotion(req, res) {
                     await requestedDocument.save();
 
                     res.json({
-                        msg: 'Your email is not verified! kindly verify your email first.',
+                        message:
+                            'Your email is not verified! kindly verify your email first.',
                     });
                 } else {
                     requestedDocument.status = 'accepted';
@@ -577,7 +595,7 @@ async function handleUserRolePromotion(req, res) {
 
                     // send response
                     res.status(200).json({
-                        msg: 'Successfully upgraded the role.',
+                        message: 'Successfully upgraded the role.',
                     });
                 }
             } else {
@@ -587,14 +605,14 @@ async function handleUserRolePromotion(req, res) {
 
                 // send response
                 res.status(200).json({
-                    msg: 'Successfully rejected the request.',
+                    message: 'Successfully rejected the request.',
                 });
             }
         } else {
-            res.json({ msg: 'User promotion request not found' });
+            res.json({ message: 'User promotion request not found' });
         }
     } catch (error) {
-        res.status(500).json({ msg: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
