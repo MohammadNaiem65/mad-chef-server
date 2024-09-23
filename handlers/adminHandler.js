@@ -1,17 +1,32 @@
 const express = require('express');
-const Admin = require('../models/Admin');
-const { getAuth } = require('firebase-admin/auth');
+const multer = require('multer');
+
 const checkAuth = require('../middlewares/checkAuth');
 const checkAdmin = require('../middlewares/checkAdmin');
-const { getAdminData } = require('../controllers/adminController');
+const uploadImage = require('../middlewares/uploadImage');
+const {
+    getAdminData,
+    updateAdminData,
+} = require('../controllers/adminController');
 
 const router = express.Router();
 
+// Multer setup
+const upload = multer({ dest: 'uploads/' });
+
 router.get(
-	['/admin/:adminId', '/:adminId'],
-	checkAuth,
-	checkAdmin,
-	getAdminData
+    ['/admin/:adminId', '/:adminId'],
+    checkAuth,
+    checkAdmin,
+    getAdminData
+);
+router.patch('/admin/update-data', checkAuth, checkAdmin, updateAdminData);
+router.post(
+    '/admin/upload-profile-picture',
+    checkAuth,
+    upload.single('profile-image'),
+    uploadImage,
+    updateAdminData
 );
 
 module.exports = router;
