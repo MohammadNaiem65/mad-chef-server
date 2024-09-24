@@ -8,14 +8,15 @@ const Chef = require('../models/Chef');
 const ChefReview = require('../models/ChefReview');
 const User = require('../models/User');
 const createSortObject = require('../utility/createSortObject');
+const validateMongoDBId = require('../utility/validateMongoDBId');
 
 async function getChef(req, res) {
     const { chefId } = req.params;
     const { include = '', exclude = '' } = req.query;
 
     // Check if chefId exists and is valid
-    if (!chefId || !isValidObjectId(chefId)) {
-        return res.status(400).json({ message: 'Provide valid chef id.' });
+    if (!chefId || !validateMongoDBId(chefId, res)) {
+        return;
     }
 
     // Create initial pipeline
@@ -27,38 +28,29 @@ async function getChef(req, res) {
         },
     ];
 
-    // Initialize projection options as an empty object
-    let projection = {};
-    let includesObj = {};
-    let excludesObj = {};
+    // Create projection object
+    const projection = createProjectionObject(include, exclude);
 
-    // Only create projection objects if include or exclude is not an empty string
-    if (include && !exclude) {
-        includesObj = createProjectionObject(include, {}, 1);
-        projection = { ...projection, ...includesObj };
-    }
-    if (exclude && !include) {
-        excludesObj = createProjectionObject(exclude, {}, 0);
-        projection = { ...projection, ...excludesObj };
-    }
-
-    // Calculate rating if no projection field exists or includeObj has value 1 for rating field
-    if (Object.keys(projection).length === 0 || includesObj?.rating === 1) {
+    // Add rating calculation if needed
+    if (Object.keys(projection).length === 0 || projection.rating === 1) {
         pipeline.push(
             {
                 $lookup: {
                     from: 'chefreviews',
                     localField: '_id',
                     foreignField: 'chefId',
-                    as: 'rating',
+                    as: 'reviews',
                 },
             },
             {
                 $addFields: {
                     rating: {
-                        $round: [{ $avg: '$rating.rating' }, 2],
+                        $round: [{ $avg: '$reviews.rating' }, 2],
                     },
                 },
+            },
+            {
+                $project: { reviews: 0 }, // Remove the reviews array
             }
         );
     }
@@ -69,123 +61,94 @@ async function getChef(req, res) {
     }
 
     try {
-        const chef = await Chef.aggregate(pipeline);
+        const [chef] = await Chef.aggregate(pipeline);
 
         res.json({
             message: 'Successful',
-            data: chef?.length > 0 ? chef[0] : {},
+            data: chef || {},
         });
     } catch (err) {
-        console.log(err);
-        res.status(500).json(err);
+        console.error('Error in getChef:', err);
+        res.status(500).json({ message: 'Internal server error' });
     }
 }
 
 async function getChefs(req, res) {
     const {
         p,
-        page = 0,
+        page = 1,
         l,
         limit = process.env.CHEFS_PER_PAGE,
         sort = 'updatedAt',
         order = 'desc',
         include = '',
         exclude = '',
+        role = 'student',
     } = req.query;
+    const _page = Math.max(0, parseInt(p || page) - 1);
+    const _limit = Math.max(1, parseInt(l || limit));
+    const _role = role === 'student' ? 'user' : role;
 
-    const _page = parseInt(p || page) - 1;
-    const _limit = parseInt(l || limit) <= 0 ? 10 : parseInt(l || limit);
+    // Create projection object
+    const projection = createProjectionObject(include, exclude);
 
-    // Initialize pipeline options as an empty object
-    let projection = {};
-    let includesObj = {};
-    let excludesObj = {};
-
-    // Create sort object based on query
+    // Create sort object
     const sortObj = createSortObject(sort, order);
 
-    // Only create projection objects if include or exclude is not an empty string
-    if (include) {
-        includesObj = createProjectionObject(include, {}, 1);
-        projection = { ...projection, ...includesObj };
-    }
-    if (exclude) {
-        excludesObj = createProjectionObject(exclude, {}, 0);
-        projection = { ...projection, ...excludesObj };
-    }
+    // Create filter object based on role
+    const filterObj =
+        _role !== 'admin' ? { recipes: { $exists: true, $ne: [] } } : {};
 
-    // Create the aggregation pipeline
+    // Add rating calculation if needed
+    const includeRating =
+        Object.keys(projection).length === 0 || projection.rating === 1;
     const pipeline = [
+        { $match: filterObj },
+        ...(includeRating
+            ? [
+                  {
+                      $lookup: {
+                          from: 'chefreviews',
+                          localField: '_id',
+                          foreignField: 'chefId',
+                          as: 'reviews',
+                      },
+                  },
+                  {
+                      $addFields: {
+                          rating: {
+                              $round: [{ $avg: '$reviews.rating' }, 2],
+                          },
+                      },
+                  },
+                  {
+                      $project: { reviews: 0 }, // Remove the reviews array
+                  },
+              ]
+            : []),
         { $sort: sortObj },
-        { $skip: (_page <= 0 ? 0 : _page) * _limit },
+        { $skip: _page * _limit },
         { $limit: _limit },
+        { $project: projection },
     ];
 
-    // Add stage to calculate average rating
-    if (includesObj?.rating || !excludesObj?.rating) {
-        if (sortObj?.rating) {
-            pipeline.unshift(
-                {
-                    $lookup: {
-                        from: 'chefreviews',
-                        localField: '_id',
-                        foreignField: 'chefId',
-                        as: 'rating',
-                    },
-                },
-                {
-                    $addFields: {
-                        rating: {
-                            $round: [{ $avg: '$rating.rating' }, 2],
-                        },
-                    },
-                }
-            );
-        } else if (includesObj?.rating) {
-            pipeline.push(
-                {
-                    $lookup: {
-                        from: 'chefreviews',
-                        localField: '_id',
-                        foreignField: 'chefId',
-                        as: 'rating',
-                    },
-                },
-                {
-                    $addFields: {
-                        rating: {
-                            $round: [{ $avg: '$rating.rating' }, 2],
-                        },
-                    },
-                }
-            );
-        }
-    }
-
-    // Add projection stage if needed
-    if (Object.keys(projection).length > 0) {
-        pipeline.push({ $project: projection });
-    }
-
     try {
-        const result = await Chef.aggregate(pipeline);
-
-        const totalRecipes = await Chef.countDocuments({});
-        const currPage = getCurrPage(
-            _page <= 0 ? 1 : _page + 1,
-            _limit,
-            totalRecipes
-        );
+        const [result, totalCount] = await Promise.all([
+            Chef.aggregate(pipeline),
+            Chef.countDocuments(filterObj),
+        ]);
+        const currPage = getCurrPage(_page + 1, _limit, totalCount);
 
         res.json({
             data: result,
             meta: {
                 page: currPage,
-                totalCount: totalRecipes,
+                totalCount,
             },
         });
     } catch (err) {
-        res.status(500).json(err);
+        console.error('Error in getChefs:', err);
+        res.status(500).json({ message: 'Internal server error' });
     }
 }
 
@@ -193,42 +156,55 @@ async function getChefReviews(req, res) {
     const { chefId } = req.params;
     const {
         p,
-        page = 0,
+        page = 1,
         l,
         limit = process.env.CHEF_REVIEWS_PER_PAGE,
         sort = 'updatedAt',
         order = 'desc',
+        include = '',
+        exclude = '',
     } = req.query;
 
-    const _page = parseInt(p || page) - 1;
-    const _limit = parseInt(l || limit) <= 0 ? 10 : parseInt(l || limit);
+    // Ensure page and limit are positive integers
+    const _page = Math.max(0, parseInt(p || page) - 1);
+    const _limit = Math.max(1, parseInt(l || limit));
+
+    // Create projection object based on include/exclude parameters
+    const projection = createProjectionObject(include, exclude);
 
     // Create sort object based on query
     const sortObj = createSortObject(sort, order);
 
     try {
-        const result = await ChefReview.find({ chefId })
-            .sort(sortObj)
-            .skip((_page <= 0 ? 0 : _page) * _limit)
-            .limit(_limit);
+        // Use aggregation pipeline for more flexibility
+        const pipeline = [
+            { $match: { chefId: mongoose.Types.ObjectId(chefId) } },
+            { $sort: sortObj },
+            { $skip: _page * _limit },
+            { $limit: _limit },
+            { $project: projection },
+        ];
 
-        const totalReviews = await ChefReview.countDocuments({ chefId });
-        const currPage = getCurrPage(
-            _page <= 0 ? 1 : _page + 1,
-            _limit,
-            totalReviews
-        );
+        const [reviews, totalReviews] = await Promise.all([
+            ChefReview.aggregate(pipeline),
+            ChefReview.countDocuments({ chefId }),
+        ]);
+
+        const currPage = getCurrPage(_page + 1, _limit, totalReviews);
 
         res.json({
-            data: result,
+            data: reviews,
             meta: {
                 page: currPage,
                 totalCount: totalReviews,
             },
         });
     } catch (err) {
-        console.log(err);
-        res.status(500).json(err);
+        console.error('Error in getChefReviews:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 
