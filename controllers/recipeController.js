@@ -1,9 +1,9 @@
 const { default: mongoose } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
-const getCurrPage = require('../utility/getCurrPage');
 const Recipe = require('../models/Recipe');
 const Rating = require('../models/Rating');
+const getCurrPage = require('../utility/getCurrPage');
 const validateMongoDBId = require('../utility/validateMongoDBId');
 const createProjectionObject = require('../utility/createProjectionObject');
 
@@ -79,7 +79,7 @@ async function searchRecipes(req, res) {
     const filterPipeline = [];
 
     // Add role-based filter
-    if (_role !== 'admin') {
+    if (_role === 'user') {
         filterPipeline.push({ $match: { status: 'published' } });
     }
 
@@ -189,6 +189,7 @@ async function searchRecipes(req, res) {
 
 async function getRecipe(req, res) {
     const { recipeId } = req.params;
+    const { include = '', exclude = '' } = req.query;
 
     // Check if recipeId is provided
     if (!recipeId) {
@@ -202,42 +203,54 @@ async function getRecipe(req, res) {
         return;
     }
 
-    try {
-        // Fetch recipe and calculate average rating concurrently
-        const [recipe, ratingResults] = await Promise.all([
-            Recipe.findById(recipeId),
-            Rating.aggregate([
-                { $match: { recipeId: new ObjectId(recipeId) } },
-                {
-                    $group: {
-                        _id: '$recipeId',
-                        averageRating: { $avg: '$rating' },
-                        totalCount: { $sum: 1 },
-                    },
+    const projection = createProjectionObject(include, exclude);
+
+    const pipeline = [{ $match: { _id: new ObjectId(recipeId) } }];
+
+    // Calculate rating if needed
+    const projectionHasValueOne = Object.values(projection).includes(1);
+    if (
+        (projectionHasValueOne && projection.rating) ||
+        (!projectionHasValueOne && projection.rating === undefined)
+    ) {
+        pipeline.push(
+            {
+                $lookup: {
+                    from: 'ratings',
+                    localField: '_id',
+                    foreignField: 'recipeId',
+                    as: 'ratings',
                 },
-            ]),
-        ]);
+            },
+            {
+                $addFields: {
+                    rating: { $round: [{ $avg: '$ratings.rating' }, 2] },
+                    ...((projectionHasValueOne && projection.ratingCount) ||
+                    (!projectionHasValueOne &&
+                        projection.ratingCount === undefined)
+                        ? { ratingCount: { $size: '$ratings' } }
+                        : {}),
+                },
+            }
+        );
+    }
+
+    // Add projection if needed
+    if (projection.rating !== 0) {
+        pipeline.push({ $project: projection });
+    }
+
+    try {
+        const recipe = await Recipe.aggregate(pipeline);
 
         // If recipe not found, return 404
         if (!recipe) {
             return res.status(404).json({ message: 'Recipe not found.' });
         }
 
-        // Extract rating information
-        const ratingInfo = ratingResults[0] || {};
-
-        // Prepare the response object
-        const result = {
-            ...recipe.toObject(),
-            rating: ratingInfo.averageRating
-                ? Number(ratingInfo.averageRating.toFixed(1))
-                : null,
-            totalRating: ratingInfo.totalCount || null,
-        };
-
         res.json({
             message: 'Successful',
-            data: result,
+            data: recipe[0],
         });
     } catch (err) {
         console.error('Error in getRecipe:', err);
