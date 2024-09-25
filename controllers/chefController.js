@@ -175,16 +175,19 @@ async function getChefReviews(req, res) {
     // Create sort object based on query
     const sortObj = createSortObject(sort, order);
 
-    try {
-        // Use aggregation pipeline for more flexibility
-        const pipeline = [
-            { $match: { chefId: mongoose.Types.ObjectId(chefId) } },
-            { $sort: sortObj },
-            { $skip: _page * _limit },
-            { $limit: _limit },
-            { $project: projection },
-        ];
+    // Use aggregation pipeline for more flexibility
+    const pipeline = [
+        { $match: { chefId: new ObjectId(chefId) } },
+        { $sort: sortObj },
+        { $skip: _page * _limit },
+        { $limit: _limit },
+    ];
 
+    if (Object.keys(projection).length > 0) {
+        pipeline.push({ $project: projection });
+    }
+
+    try {
         const [reviews, totalReviews] = await Promise.all([
             ChefReview.aggregate(pipeline),
             ChefReview.countDocuments({ chefId }),
