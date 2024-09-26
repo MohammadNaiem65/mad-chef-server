@@ -233,10 +233,11 @@ async function getRecipe(req, res) {
                 },
             }
         );
+        projection.ratings = 0;
     }
 
     // Add projection if needed
-    if (projection.rating !== 0) {
+    if (Object.keys(projection).length > 0) {
         pipeline.push({ $project: projection });
     }
 
@@ -413,6 +414,7 @@ async function updateRecipeStatus(req, res) {
 async function deleteRecipe(req, res) {
     const { recipeId: paramId } = req.params;
     const { recipeId: queryId } = req.query;
+    const { userId, role } = req.user;
 
     const recipeId = paramId || queryId;
 
@@ -423,7 +425,10 @@ async function deleteRecipe(req, res) {
     try {
         const doc = await Recipe.findById(recipeId);
 
-        if (doc.status === 'rejected') {
+        if (
+            (role === 'admin' && doc.status === 'rejected') ||
+            (role === 'chef' && new ObjectId(userId).equals(doc.author))
+        ) {
             const result = await Recipe.deleteOne({ _id: recipeId });
 
             res.json({ message: 'Successfully deleted.', data: result });
