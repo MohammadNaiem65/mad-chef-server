@@ -17,8 +17,8 @@ const {
     addUserBookmark,
     removeUserBookmark,
     getUserLikes,
-    addUserLike,
-    removeUserLike,
+    addLikeToRecipe,
+    removeLikeFromRecipe,
     addRecipeRating,
     getRecipeRatings,
     removeRecipeRating,
@@ -30,6 +30,8 @@ const {
     verifyUserEmail,
     updateUserPackage,
     updateUserData,
+    getUserLike,
+    getUserBookmark,
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -48,6 +50,7 @@ router.post(
 );
 
 // ! Bookmarks related routes
+router.get(['/user/:id/bookmark', '/:id/bookmark'], checkAuth, getUserBookmark);
 router.get(
     ['/user/:id/bookmarks', '/:id/bookmarks'],
     checkAuth,
@@ -65,9 +68,18 @@ router.delete(
 );
 
 // ! Likes related routes
+router.get(['/user/:id/like', '/:id/like'], checkAuth, getUserLike);
 router.get(['/user/:id/likes', '/:id/likes'], checkAuth, getUserLikes);
-router.post(['/user/:id/likes', '/:id/likes'], checkAuth, addUserLike);
-router.delete(['/user/:id/likes', '/:id/likes'], checkAuth, removeUserLike);
+router.post(
+    ['/user/:id/add-like', '/:id/add-like'],
+    checkAuth,
+    addLikeToRecipe
+);
+router.delete(
+    ['/user/:id/remove-like', '/:id/remove-like'],
+    checkAuth,
+    removeLikeFromRecipe
+);
 
 // ! Recipe ratings related routes
 router.get(

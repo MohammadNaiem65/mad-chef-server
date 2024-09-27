@@ -17,6 +17,33 @@ const ChefReview = require('../models/ChefReview');
 const RolePromotionApplicant = require('../models/RolePromotionApplicant');
 const PaymentReceipt = require('../models/PaymentReceipt');
 const RefreshToken = require('../models/RefreshToken');
+const Recipe = require('../models/Recipe');
+
+function createError(message, statusCode) {
+    return { message, statusCode };
+}
+
+/**
+ * Helper function to handle database operations with transaction
+ * @param {function} dbOperation - The database operation to perform
+ * @param {Object} res - Express response object
+ * @returns {Promise<*>} The result of the database operation
+ */
+async function withTransaction(dbOperation) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const result = await dbOperation(session);
+        await session.commitTransaction();
+        return result;
+    } catch (error) {
+        await session.abortTransaction();
+        throw error; // Re-throw the error to be handled in the middleware
+    } finally {
+        session.endSession();
+    }
+}
 
 // middleware functions
 async function getUser(req, res) {
@@ -239,6 +266,37 @@ async function updateUserPackage(req, res) {
 }
 
 // ! Bookmarks related routes
+async function getUserBookmark(req, res) {
+    const { id } = req.params;
+    const { recipeId } = req.query;
+
+    // validate user id and recipe id
+    if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
+        return;
+    }
+
+    try {
+        const bookmarkedDoc = await Bookmark.findOne({
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
+        });
+
+        if (!bookmarkedDoc) {
+            return res
+                .status(404)
+                .json({ message: "You didn't bookmark the recipe." });
+        }
+
+        res.json({ message: 'Successful', data: bookmarkedDoc });
+    } catch (error) {
+        console.error('Error in getUserBookmark:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
+    }
+}
+
 async function getUserBookmarks(req, res) {
     const { id } = req.params;
 
@@ -306,8 +364,51 @@ async function removeUserBookmark(req, res) {
 }
 
 // ! Likes related routes
+async function getUserLike(req, res) {
+    const { id } = req.params;
+    const { recipeId } = req.query;
+    const { userId } = req.user;
+
+    // Ensure authorization
+    if (id !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    // Validate user id and recipe id
+    if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
+        return;
+    }
+
+    try {
+        const likedDoc = await Like.findOne({
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
+        });
+
+        if (!likedDoc) {
+            return res
+                .status(404)
+                .json({ message: "You didn't like the recipe." });
+        }
+
+        res.json({ message: 'Successful', data: likedDoc });
+    } catch (error) {
+        console.error('Error in getUserLike:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
+    }
+}
+
 async function getUserLikes(req, res) {
     const { id } = req.params;
+    const { userId } = req.user;
+
+    // Ensure authorization
+    if (id !== userId) {
+        return res.status(403).json({ message: 'Unauthorized access' });
+    }
 
     // validate user id
     if (!validateMongoDBId(id, res)) {
@@ -325,43 +426,113 @@ async function getUserLikes(req, res) {
     }
 }
 
-async function addUserLike(req, res) {
+async function addLikeToRecipe(req, res) {
     const { id } = req.params;
     const { recipeId } = req.query;
-
-    // validate user id and recipe id
-    if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
-        return;
-    }
+    const { userId } = req.user;
 
     try {
-        const result = await Like.create({
-            userId: new ObjectId(id),
-            recipeId: new ObjectId(recipeId),
+        if (id !== userId) {
+            throw createError('Unauthorized access', 403);
+        }
+
+        if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
+            return;
+        }
+
+        const result = await withTransaction(async (session) => {
+            const likeExists = await Like.exists({
+                userId: new ObjectId(id),
+                recipeId: new ObjectId(recipeId),
+            });
+
+            if (likeExists) {
+                throw createError('Like already exists', 400);
+            }
+
+            const newLike = await Like.create(
+                [
+                    {
+                        userId: new ObjectId(id),
+                        recipeId: new ObjectId(recipeId),
+                    },
+                ],
+                { session }
+            );
+
+            const updatedRecipe = await Recipe.findByIdAndUpdate(
+                recipeId,
+                { $inc: { like: 1 } },
+                { new: true, session }
+            );
+
+            if (!updatedRecipe) {
+                throw createError('Recipe not found', 404);
+            }
+
+            return { like: newLike[0], recipe: updatedRecipe };
         });
 
-        res.json({ message: 'Successful', data: result });
+        res.json({
+            message: 'Successfully added like and updated recipe',
+            data: result.like,
+        });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        console.error('Error in addLikeToRecipe:', error);
+        res.status(error.statusCode || 500).json({
+            message: error.message || 'An unexpected error occurred',
+        });
     }
 }
 
-async function removeUserLike(req, res) {
-    const { docId } = req.query;
+async function removeLikeFromRecipe(req, res) {
+    const { id } = req.params;
+    const { recipeId } = req.query;
+    const { userId } = req.user;
 
-    // validate recipe id
-    if (!validateMongoDBId(docId, res)) {
+    if (id !== userId) {
+        throw createError('Unauthorized access', 403);
+    }
+
+    if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
         return;
     }
 
     try {
-        const result = await Like.deleteOne({
-            _id: new ObjectId(docId),
-        });
+        const result = await withTransaction(async (session) => {
+            const removedLike = await Like.findOneAndDelete(
+                { userId: new ObjectId(id), recipeId: new ObjectId(recipeId) },
+                { session }
+            );
 
-        res.json({ message: 'Successful', data: result });
+            if (!removedLike) {
+                throw createError('This recipe is not liked', 400);
+            }
+
+            const updatedRecipe = await Recipe.findByIdAndUpdate(
+                recipeId,
+                { $inc: { like: -1 } },
+                { new: true, session }
+            );
+
+            if (!updatedRecipe) {
+                throw createError('Recipe not found', 400);
+            }
+
+            return { like: removedLike, recipe: updatedRecipe };
+        }, res);
+
+        if (result) {
+            res.json({
+                message: 'Successfully removed like.',
+                data: result.like,
+            });
+        }
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        console.error('Error in removeLikeFromRecipe:', error);
+        res.status(error.statusCode || 500).json({
+            message: error.message || 'An unexpected error occurred',
+        });
     }
 }
 
@@ -623,11 +794,13 @@ module.exports = {
     updateUserData,
     updateUserPackage,
     addUserBookmark,
+    getUserBookmark,
     getUserBookmarks,
     removeUserBookmark,
-    addUserLike,
+    getUserLike,
     getUserLikes,
-    removeUserLike,
+    addLikeToRecipe,
+    removeLikeFromRecipe,
     getRecipeRatings,
     addRecipeRating,
     editRecipeRating,
