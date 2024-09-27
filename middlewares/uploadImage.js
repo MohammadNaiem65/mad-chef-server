@@ -2,12 +2,12 @@ const fs = require('fs');
 const cloudinary = require('cloudinary').v2;
 
 async function uploadImage(req, res, next) {
-    const imgPath = req.file.path;
-    const { userId } = req.user;
-
-    if (!imgPath) {
+    if (!req.file) {
         return res.status(400).json({ message: 'No payload found.' });
     }
+
+    const imgPath = req.file.path;
+    const { userId } = req.user;
 
     try {
         // delete the previous image
@@ -20,7 +20,7 @@ async function uploadImage(req, res, next) {
             resource_type: 'image',
         });
 
-        // Delete local file after successful upload
+        // Delete temporary file after successful upload
         fs.unlinkSync(imgPath);
 
         // Set the data to req.body
@@ -29,9 +29,14 @@ async function uploadImage(req, res, next) {
         next();
     } catch (error) {
         console.error(error);
+        // Ensure cleaning up the temporary file even if an error occurs
+        if (fs.existsSync(imgPath)) {
+            fs.unlinkSync(imgPath);
+        }
         res.status(500).json({
             message: 'Error occurred while uploading image',
         });
     }
 }
+
 module.exports = uploadImage;

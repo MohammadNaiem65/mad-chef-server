@@ -3,7 +3,7 @@ const express = require('express');
 const multer = require('multer');
 
 // Multer setup
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: '/tmp/uploads/' });
 
 // internal imports
 const checkAuth = require('../middlewares/checkAuth');

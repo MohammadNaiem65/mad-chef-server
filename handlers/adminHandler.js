@@ -12,7 +12,7 @@ const {
 const router = express.Router();
 
 // Multer setup
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: '/tmp/uploads/' });
 
 router.get(
     ['/admin/:adminId', '/:adminId'],
