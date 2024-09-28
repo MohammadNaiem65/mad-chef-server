@@ -282,9 +282,10 @@ async function getUserBookmark(req, res) {
         });
 
         if (!bookmarkedDoc) {
-            return res
-                .status(404)
-                .json({ message: "You didn't bookmark the recipe." });
+            return res.json({
+                message: "You didn't like the recipe.",
+                data: {},
+            });
         }
 
         res.json({ message: 'Successful', data: bookmarkedDoc });
@@ -386,9 +387,10 @@ async function getUserLike(req, res) {
         });
 
         if (!likedDoc) {
-            return res
-                .status(404)
-                .json({ message: "You didn't like the recipe." });
+            return res.json({
+                message: "You didn't like the recipe.",
+                data: {},
+            });
         }
 
         res.json({ message: 'Successful', data: likedDoc });
