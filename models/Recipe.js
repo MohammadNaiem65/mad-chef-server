@@ -37,12 +37,13 @@ const recipeSchema = new mongoose.Schema(
         },
         like: {
             type: Number,
+            min: 0,
             default: 0,
         },
         status: {
             type: String,
             enum: ['pending', 'published', 'hidden', 'rejected'],
-            required: true,
+            default: 'pending',
         },
         author: {
             type: mongoose.SchemaTypes.ObjectId,
