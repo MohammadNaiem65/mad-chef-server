@@ -14,8 +14,8 @@ const {
     getUsers,
     handleUserRolePromotion,
     getUserBookmarks,
-    addUserBookmark,
-    removeUserBookmark,
+    markRecipeAsBookmark,
+    removeRecipeAsBookmark,
     getUserLikes,
     addLikeToRecipe,
     removeLikeFromRecipe,
@@ -57,14 +57,14 @@ router.get(
     getUserBookmarks
 );
 router.post(
-    ['/user/:id/bookmarks', '/:id/bookmarks'],
+    ['/user/:id/add-bookmark', '/:id/add-bookmark'],
     checkAuth,
-    addUserBookmark
+    markRecipeAsBookmark
 );
 router.delete(
-    ['/user/:id/bookmarks', '/:id/bookmarks'],
+    ['/user/:id/remove-bookmark', '/:id/remove-bookmark'],
     checkAuth,
-    removeUserBookmark
+    removeRecipeAsBookmark
 );
 
 // ! Likes related routes

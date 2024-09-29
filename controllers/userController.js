@@ -322,45 +322,79 @@ async function getUserBookmarks(req, res) {
     }
 }
 
-async function addUserBookmark(req, res) {
+async function markRecipeAsBookmark(req, res) {
     const { id } = req.params;
     const { recipeId } = req.query;
-
-    // validate user id and recipe id
-    if (!validateMongoDBId(id, res)) {
-        return;
-    } else if (!validateMongoDBId(recipeId, res)) {
-        return;
-    }
+    const { userId } = req.user;
 
     try {
-        const result = await Bookmark.create({
+        if (id !== userId) {
+            throw createError('Unauthorized access', 403);
+        }
+
+        // validate user id and recipe id
+        if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
+            return;
+        }
+
+        const bookmarkExists = await Bookmark.exists({
             userId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
-        res.json({ message: 'Successful', data: result });
+        if (bookmarkExists) {
+            throw createError('You already bookmarked it.', 400);
+        }
+
+        const newBookmark = await Bookmark.create({
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
+        });
+
+        res.json({ message: 'Successful', data: newBookmark });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        console.error('Error in markRecipeAsBookmark:', error);
+        res.status(error.statusCode || 500).json({
+            message: error.message || 'An unexpected error occurred',
+        });
     }
 }
 
-async function removeUserBookmark(req, res) {
-    const { docId } = req.query;
-
-    // validate user id and recipe id
-    if (!validateMongoDBId(docId, res)) {
-        return;
-    }
+async function removeRecipeAsBookmark(req, res) {
+    const { id } = req.params;
+    const { recipeId } = req.query;
+    const { userId } = req.user;
 
     try {
-        const result = await Bookmark.deleteOne({
-            _id: new ObjectId(docId),
+        if (id !== userId) {
+            throw createError('Unauthorized access', 403);
+        }
+
+        // validate user id and recipe id
+        if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
+            return;
+        }
+
+        const bookmarkExists = await Bookmark.exists({
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
         });
 
-        res.json({ message: 'Successful', data: result });
+        if (!bookmarkExists) {
+            throw createError("You didn't bookmarked it.", 400);
+        }
+
+        const result = await Bookmark.deleteOne({
+            userId: new ObjectId(id),
+            recipeId: new ObjectId(recipeId),
+        });
+
+        res.json({ message: 'Successfully removed bookmark', data: {} });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        console.error('Error in markRecipeAsBookmark:', error);
+        res.status(error.statusCode || 500).json({
+            message: error.message || 'An unexpected error occurred',
+        });
     }
 }
 
@@ -438,6 +472,7 @@ async function addLikeToRecipe(req, res) {
             throw createError('Unauthorized access', 403);
         }
 
+        // validate user id and recipe id
         if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
             return;
         }
@@ -527,7 +562,7 @@ async function removeLikeFromRecipe(req, res) {
         if (result) {
             res.json({
                 message: 'Successfully removed like.',
-                data: result.like,
+                data: {},
             });
         }
     } catch (error) {
@@ -795,10 +830,10 @@ module.exports = {
     verifyUserEmail,
     updateUserData,
     updateUserPackage,
-    addUserBookmark,
+    markRecipeAsBookmark,
     getUserBookmark,
     getUserBookmarks,
-    removeUserBookmark,
+    removeRecipeAsBookmark,
     getUserLike,
     getUserLikes,
     addLikeToRecipe,
