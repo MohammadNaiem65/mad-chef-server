@@ -1,5 +1,6 @@
 // external imports
 const { getAuth } = require('firebase-admin/auth');
+const { startSession } = require('mongoose');
 const jwt = require('jsonwebtoken');
 
 // internal imports
@@ -8,207 +9,269 @@ const RefreshToken = require('./../models/RefreshToken');
 const generateJwtToken = require('./../utility/generateJwtToken');
 
 async function authenticate(req, res) {
-	// get firebase idToken as userToken
-	const authToken = req.headers.authorization;
-	const userToken = authToken.split(' ')[1];
+    // Extract the Firebase ID token from the Authorization header
+    const authToken = req.headers.authorization;
+    const userToken = authToken?.split(' ')[1];
 
-	// if token is unavailable - send error
-	if (!userToken) return res.sendStatus(401);
+    // If token is unavailable, send 401 Unauthorized
+    if (!userToken) {
+        return res
+            .status(401)
+            .json({ error: 'No authentication token provided' });
+    }
 
-	// create an auth instance
-	const auth = getAuth();
+    const auth = getAuth();
+    const session = await startSession();
 
-	try {
-		// verify token
-		const decodedToken = await auth.verifyIdToken(userToken);
-		const { name, picture, email, email_verified, uid } = decodedToken;
+    try {
+        // Start a MongoDB transaction
+        session.startTransaction();
 
-		// store user data
-		const userData = {
-			userEmail: email,
-			userId: decodedToken?._id,
-			firebaseId: uid,
-			emailVerified: email_verified,
-			role: decodedToken?.role,
-			pkg: decodedToken?.pkg,
-		};
+        // Verify the Firebase token
+        const decodedToken = await auth.verifyIdToken(userToken);
+        const { name, picture, email, email_verified, uid } = decodedToken;
 
-		// if user doesn't exist - save user data to database (for registration)
-		if (!decodedToken?._id || !decodedToken?.role) {
-			// save user to database
-			await User.init();
+        // Prepare user data object
+        let userData = {
+            userEmail: email,
+            firebaseId: uid,
+            emailVerified: email_verified,
+        };
 
-			const newUser = await User.create({
-				name,
-				email,
-				emailVerified: email_verified,
-				img: picture,
-			});
+        // Check if user exists in our database
+        let user = await User.findOne({ email }).session(session);
 
-			// store user id role and and package pkg
-			userData.userId = newUser._id;
-			userData.role = newUser.role;
-			userData.pkg = newUser.pkg;
+        if (!user) {
+            // User doesn't exist, create a new one
+            user = await User.create(
+                [
+                    {
+                        name,
+                        email,
+                        emailVerified: email_verified,
+                        img: picture,
+                        role: 'student', // Default role
+                        pkg: 'basic', // Default package
+                    },
+                ],
+                { session }
+            );
 
-			// save user id and role to firebase
-			await auth.setCustomUserClaims(uid, {
-				_id: newUser._id,
-				role: newUser.role,
-				pkg: newUser.pkg,
-			});
-		}
+            user = user[0]; // Mongo returns an array for create operations within a session
 
-		// if it's only a registration request - send a successful response
-		if (req.body?.reqType == 'registration') {
-			return res.status(201).json({ msg: 'Registration successful' });
-		}
+            // Set custom claims in Firebase
+            await auth.setCustomUserClaims(uid, {
+                _id: user._id,
+                role: user.role,
+                pkg: user.pkg,
+            });
+        }
 
-		// for login purpose - send access and refresh token
-		// generate access and refresh tokens
-		const accessToken = generateJwtToken(
-			userData,
-			process.env.ACCESS_TOKEN_SECRET,
-			{ expiresIn: '1h' }
-		);
+        // Update userData with database information
+        userData = {
+            ...userData,
+            userId: user._id,
+            role: user.role,
+            pkg: user.pkg,
+        };
 
-		const refreshToken = generateJwtToken(
-			userData,
-			process.env.REFRESH_TOKEN_SECRET,
-			{ expiresIn: '30 days' }
-		);
+        // Handle registration request
+        if (req.body?.reqType === 'registration') {
+            await session.commitTransaction();
+            return res.status(201).json({ message: 'Registration successful' });
+        }
 
-		// save refresh token to database and delete one if an exists for the user
-		await RefreshToken.deleteOne({ userId: userData.userId });
-		await RefreshToken.create({
-			userId: userData.userId,
-			token: refreshToken,
-		});
+        // Generate tokens for login
+        const accessToken = generateJwtToken(
+            userData,
+            process.env.ACCESS_TOKEN_SECRET,
+            { expiresIn: '1h' }
+        );
 
-		// send response to user
-		res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
-			maxAge: 30 * 24 * 60 * 60 * 1000,
-			httpOnly: true,
-			secure: process.env.NODE_ENV !== 'development',
-			sameSite: 'None',
-		}).json({ msg: 'Successful', data: { user: userData, accessToken } });
-	} catch (err) {
-		// if the firebase idToken is expired
-		if (err.code === 'auth/id-token-expired') {
-			res.status(403).json({
-				data: 'Firebase auth token expired',
-			});
-		}
+        const refreshToken = generateJwtToken(
+            userData,
+            process.env.REFRESH_TOKEN_SECRET,
+            { expiresIn: '30 days' }
+        );
 
-		// If user validation failed
-		else if (err._message === 'User validation failed') {
-			const { uid } = await auth.verifyIdToken(userToken);
+        // Update refresh token in database
+        await RefreshToken.deleteOne({ userId: userData.userId }).session(
+            session
+        );
+        await RefreshToken.create(
+            [
+                {
+                    userId: userData.userId,
+                    token: refreshToken,
+                },
+            ],
+            { session }
+        );
 
-			// delete user from firebase
-			await auth.deleteUser(uid);
-			res.status(400).json({ data: 'User validation failed' });
-		}
+        // Commit the transaction
+        await session.commitTransaction();
 
-		// if any duplicate data found in the database
-		else if (err.code === 11000) {
-			res.status(409).json({
-				data: `A user with the ${
-					Object.keys(err.keyValue)[0]
-				} already exists`,
-			});
-		}
+        // Send response with tokens
+        res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+            httpOnly: true,
+            secure: process.env.NODE_ENV !== 'development',
+            sameSite: 'None',
+        }).json({
+            message: 'Login successful',
+            data: { user: userData, accessToken },
+        });
+    } catch (err) {
+        // Abort the transaction on any error
+        await session.abortTransaction();
 
-		// otherwise
-		else {
-			res.sendStatus(500);
-		}
-	}
+        if (err.code === 'auth/id-token-expired') {
+            res.status(403).json({ error: 'Firebase auth token expired' });
+        } else if (err._message === 'User validation failed') {
+            // Only attempt to delete the Firebase user if we successfully verified the token
+            if (uid) {
+                await auth.deleteUser(uid).catch(console.error);
+            }
+            res.status(400).json({ error: 'User validation failed' });
+        } else if (err.code === 11000) {
+            res.status(409).json({
+                error: `A user with the ${
+                    Object.keys(err.keyValue)[0]
+                } already exists`,
+            });
+        } else {
+            console.error('Authentication error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    } finally {
+        session.endSession();
+    }
 }
 
 async function reAuthenticate(req, res) {
-	const cookies = req.cookies;
+    const refreshToken = req.cookies?.[process.env.REFRESH_TOKEN_COOKIE_NAME];
 
-	// if cookie not found - send unauthorized response
-	if (!cookies || !cookies?.jwt) return res.sendStatus(401);
+    // If refresh token not found in cookies, send unauthorized response
+    if (!refreshToken) {
+        return res.status(401).json({ error: 'No refresh token provided' });
+    }
 
-	const userRefreshToken = cookies?.jwt;
+    const session = await startSession();
 
-	const storedToken = await RefreshToken.findOne({ token: userRefreshToken });
+    try {
+        session.startTransaction();
 
-	// if token not found - send forbidden response
-	if (!storedToken) {
-		res.clearCookie('jwt');
-		return res.status(403).json({ data: 'Token does not found.' });
-	}
+        // Find the stored token in the database
+        const storedToken = await RefreshToken.findOne({
+            token: refreshToken,
+        }).session(session);
 
-	// verify the token
-	jwt.verify(
-		userRefreshToken,
-		process.env.REFRESH_TOKEN_SECRET,
-		async (err, decodedToken) => {
-			if (err && err.message === 'jwt expired') {
-				await RefreshToken.deleteOne({ _id: storedToken._id });
-				res.clearCookie('jwt');
-				return res.sendStatus(403);
-			} else {
-				// store user data
-				const userData = {
-					userEmail: decodedToken.userEmail,
-					userId: decodedToken.userId,
-					firebaseId: decodedToken.firebaseId,
-					emailVerified: decodedToken.emailVerified,
-					role: decodedToken.role,
-					pkg: decodedToken.pkg,
-				};
+        // If token not found in database, clear cookie and send forbidden response
+        if (!storedToken) {
+            res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV !== 'development',
+                sameSite: 'None',
+            });
+            return res.status(403).json({ error: 'Invalid refresh token' });
+        }
 
-				// generate access and refresh tokens
-				const accessToken = generateJwtToken(
-					userData,
-					process.env.ACCESS_TOKEN_SECRET,
-					{ expiresIn: '1h' }
-				);
+        // Verify the token
+        const decodedToken = jwt.verify(
+            refreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        );
 
-				const refreshToken = generateJwtToken(
-					userData,
-					process.env.REFRESH_TOKEN_SECRET,
-					{ expiresIn: '30 days' }
-				);
+        // Prepare user data
+        const userData = {
+            userEmail: decodedToken.userEmail,
+            userId: decodedToken.userId,
+            firebaseId: decodedToken.firebaseId,
+            emailVerified: decodedToken.emailVerified,
+            role: decodedToken.role,
+            pkg: decodedToken.pkg,
+        };
 
-				// save refresh token to database and delete one if an exists for the user
-				await RefreshToken.deleteOne({ _id: storedToken._id });
-				await RefreshToken.create({
-					userId: userData.userId,
-					token: refreshToken,
-				});
+        // Generate new access and refresh tokens
+        const newAccessToken = generateJwtToken(
+            userData,
+            process.env.ACCESS_TOKEN_SECRET,
+            { expiresIn: '1h' }
+        );
 
-				// send response to user
-				res.cookie(
-					process.env.REFRESH_TOKEN_COOKIE_NAME,
-					refreshToken,
-					{
-						maxAge: 30 * 24 * 60 * 60 * 1000,
-						httpOnly: true,
-						secure: process.env.NODE_ENV !== 'development',
-						sameSite: 'None',
-					}
-				).json({
-					msg: 'Successful',
-					data: { user: userData, accessToken },
-				});
-			}
-		}
-	);
+        const newRefreshToken = generateJwtToken(
+            userData,
+            process.env.REFRESH_TOKEN_SECRET,
+            { expiresIn: '30 days' }
+        );
+
+        // Update refresh token in database
+        await RefreshToken.deleteOne({ _id: storedToken._id }).session(session);
+        await RefreshToken.create(
+            [
+                {
+                    userId: userData.userId,
+                    token: newRefreshToken,
+                },
+            ],
+            { session }
+        );
+
+        // Commit the transaction
+        await session.commitTransaction();
+
+        // Send response to user
+        res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, newRefreshToken, {
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+            httpOnly: true,
+            secure: process.env.NODE_ENV !== 'development',
+            sameSite: 'None',
+        }).json({
+            message: 'Reauthentication successful',
+            data: { user: userData, accessToken: newAccessToken },
+        });
+    } catch (err) {
+        await session.abortTransaction();
+
+        if (err.name === 'TokenExpiredError') {
+            // Token has expired, clear cookie and send forbidden response
+            res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV !== 'development',
+                sameSite: 'None',
+            });
+            return res.status(403).json({ error: 'Refresh token expired' });
+        } else if (err.name === 'JsonWebTokenError') {
+            // Token is invalid, clear cookie and send forbidden response
+            res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV !== 'development',
+                sameSite: 'None',
+            });
+            return res.status(403).json({ error: 'Invalid refresh token' });
+        } else {
+            console.error('Reauthentication error:', err);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    } finally {
+        session.endSession();
+    }
 }
 
-async function logout(req, res) {
-	const userId = req.params.userId;
+module.exports = reAuthenticate;
 
-	try {
-		await RefreshToken.deleteOne({ userId });
-		res.clearCookie('jwt');
-		res.json({ msg: 'Logout successful' });
-	} catch (error) {
-		res.status(500).json({ msg: 'Something went wrong. Try again later' });
-	}
+async function logout(req, res) {
+    const userId = req.params.userId;
+
+    try {
+        await RefreshToken.deleteOne({ userId });
+        res.clearCookie('jwt');
+        res.json({ message: 'Logout successful' });
+    } catch (error) {
+        res.status(500).json({
+            message: 'Something went wrong. Try again later',
+        });
+    }
 }
 
 module.exports = { authenticate, reAuthenticate, logout };
