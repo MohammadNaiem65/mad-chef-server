@@ -20,6 +20,7 @@ const recipeHandler = require('./handlers/recipeHandler');
 const consultHandler = require('./handlers/consultHandler');
 const paymentHandler = require('./handlers/paymentHandler');
 const roleHandler = require('./handlers/roleHandler');
+const newsletterHandler = require('./handlers/newsletterHandler');
 
 // Create app instance
 const app = express();
@@ -69,6 +70,7 @@ app.use('/recipes', recipeHandler);
 app.use('/consults', consultHandler);
 app.use('/payments', paymentHandler);
 app.use('/roles', roleHandler);
+app.use('/newsletter', newsletterHandler);
 
 // Listen app
 app.listen(port, () => {
