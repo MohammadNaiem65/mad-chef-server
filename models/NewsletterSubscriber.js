@@ -3,8 +3,6 @@ const { default: mongoose } = require('mongoose');
 const newsletterSubscriberSchema = new mongoose.Schema({
     userId: {
         type: mongoose.SchemaTypes.ObjectId,
-        ref: 'User',
-        unique: true,
     },
     email: {
         type: String,

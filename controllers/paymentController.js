@@ -1,9 +1,8 @@
 const { default: mongoose } = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
-const validateMongoDBId = require('../utility/validateMongoDBId');
 const PaymentReceipt = require('../models/PaymentReceipt');
-const { json } = require('express');
+const validateMongoDBId = require('../utility/validateMongoDBId');
 const getCurrPage = require('../utility/getCurrPage');
 
 const stripe = require('stripe')(process.env.STRIPE_API_KEY);
@@ -12,7 +11,7 @@ async function createPaymentIntent(req, res) {
     const { amount } = req.body;
 
     if (typeof amount !== 'number') {
-        return res.status(400).json({ msg: 'Amount must be a number' });
+        return res.status(400).json({ message: 'Amount must be a number' });
     }
 
     const finalAmount = parseFloat(amount.toFixed(2));
@@ -31,8 +30,11 @@ async function createPaymentIntent(req, res) {
             data: { clientSecret: paymentIntent.client_secret },
         });
     } catch (err) {
-        console.log(err);
-        res.status(500).json({ msg: 'An error occurred', data: err });
+        console.error('Error in createPaymentIntent:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 
@@ -42,12 +44,12 @@ async function getPaymentReceipts(req, res) {
         page = 0,
         l,
         limit = process.env.RECEIPTS_PER_PAGE,
-        userId,
+        studentId,
         filter,
     } = req.query;
 
-    // Stop the execution if the userId exists and is invalid
-    if (userId !== undefined && !validateMongoDBId(userId, res)) {
+    // Stop the execution if the studentId is invalid
+    if (!validateMongoDBId(studentId, res)) {
         return;
     }
 
@@ -55,11 +57,10 @@ async function getPaymentReceipts(req, res) {
     const _limit = parseInt(l || limit) <= 0 ? 1 : parseInt(l || limit);
 
     // Create aggregation pipeline
-    // let pipeline;
     let filterObj = {};
 
-    if (userId) {
-        filterObj.userId = new ObjectId(userId);
+    if (studentId) {
+        filterObj.studentId = new ObjectId(studentId);
     } else if (filter !== 'all') {
         filterObj.status = filter;
     }
@@ -73,9 +74,11 @@ async function getPaymentReceipts(req, res) {
     ];
 
     try {
-        const paymentReceipts = await PaymentReceipt.aggregate(pipeline);
+        const [paymentReceipts, totalCount] = await Promise.all([
+            PaymentReceipt.aggregate(pipeline),
+            PaymentReceipt.countDocuments(filterObj),
+        ]);
 
-        const totalCount = await PaymentReceipt.countDocuments(filterObj);
         const currPage = getCurrPage(
             _page <= 0 ? 1 : _page + 1,
             _limit,
@@ -90,24 +93,27 @@ async function getPaymentReceipts(req, res) {
             },
         });
     } catch (err) {
-        console.log(err);
-        res.status(500).json({ msg: 'An error occurred', data: err });
+        console.error('Error in getChefReviews:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 
 async function savePaymentReceipt(req, res) {
-    const { userId, username, email, pkg, transactionId, amount, status } =
+    const { studentId, username, email, pkg, transactionId, amount, status } =
         req.body;
 
-    // Stop the execution if the userId exists and is invalid
-    if (userId !== undefined && !validateMongoDBId(userId, res)) {
+    // Stop the execution if the studentId is invalid
+    if (!validateMongoDBId(studentId, res)) {
         return;
     }
 
     try {
         // Save the payment receipt to DB
         const transactionReceipt = await PaymentReceipt.create({
-            userId,
+            studentId,
             username,
             email,
             pkg,
@@ -116,9 +122,13 @@ async function savePaymentReceipt(req, res) {
             status,
         });
 
-        res.json({ msg: 'Successful', data: transactionReceipt });
+        res.json({ message: 'Successful', data: transactionReceipt });
     } catch (err) {
-        res.status(500).json({ msg: 'An error occurred', data: err });
+        console.error('Error in savePaymentReceipt:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 
@@ -146,9 +156,16 @@ async function deletePaymentReceipt(req, res) {
             _id: { $in: idsToDelete },
         });
 
-        res.json({ msg: 'Successful', data: result });
+        res.json({
+            message: 'Successfully deleted the payments receipts',
+            data: result,
+        });
     } catch (err) {
-        res.status(500).json({ msg: 'An error occurred', data: err });
+        console.error('Error in deletePaymentReceipt:', err);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+        });
     }
 }
 

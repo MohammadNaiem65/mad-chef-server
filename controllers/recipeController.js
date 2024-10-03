@@ -310,8 +310,8 @@ async function getRecipeRatings(req, res) {
             return;
         }
     }
-    if (parsedDataFilter?.userId) {
-        if (!validateMongoDBId(parsedDataFilter.userId, res)) {
+    if (parsedDataFilter?.studentId) {
+        if (!validateMongoDBId(parsedDataFilter.studentId, res)) {
             return;
         }
     }
@@ -331,8 +331,8 @@ async function getRecipeRatings(req, res) {
         const match = {};
         if (parsedDataFilter.recipeId)
             match.recipeId = new ObjectId(parsedDataFilter.recipeId);
-        if (parsedDataFilter.userId)
-            match.userId = new ObjectId(parsedDataFilter.userId);
+        if (parsedDataFilter.studentId)
+            match.studentId = new ObjectId(parsedDataFilter.studentId);
         if (Object.keys(match).length > 0) pipeline.unshift({ $match: match });
     }
 
@@ -342,7 +342,7 @@ async function getRecipeRatings(req, res) {
             {
                 $lookup: {
                     from: 'users',
-                    localField: 'userId',
+                    localField: 'studentId',
                     foreignField: '_id',
                     as: 'userDetails',
                 },

@@ -4,7 +4,6 @@ const rolePromotionApplicantSchema = new mongoose.Schema(
     {
         usersId: {
             type: mongoose.SchemaTypes.ObjectId,
-            ref: 'User',
         },
         role: {
             type: String,

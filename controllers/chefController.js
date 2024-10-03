@@ -3,19 +3,19 @@ const { ObjectId } = mongoose.Types;
 
 const getCurrPage = require('../utility/getCurrPage');
 const createProjectionObject = require('../utility/createProjectionObject');
+const createSortObject = require('../utility/createSortObject');
+const validateMongoDBId = require('../utility/validateMongoDBId');
 
 const Chef = require('../models/Chef');
 const ChefReview = require('../models/ChefReview');
-const User = require('../models/User');
-const createSortObject = require('../utility/createSortObject');
-const validateMongoDBId = require('../utility/validateMongoDBId');
+const Student = require('../models/Student');
 
 async function getChef(req, res) {
     const { chefId } = req.params;
     const { include = '', exclude = '' } = req.query;
 
-    // Check if chefId exists and is valid
-    if (!chefId || !validateMongoDBId(chefId, res)) {
+    // Check if chefId is valid
+    if (!validateMongoDBId(chefId, res)) {
         return;
     }
 
@@ -213,25 +213,25 @@ async function getChefReviews(req, res) {
 
 async function createChefReview(req, res) {
     const { chefId } = req.params;
-    const { userId, rating, message } = req.body;
+    const { studentId, rating, message } = req.body;
 
     // Check if chefId exists and is valid
     if (!chefId || !isValidObjectId(chefId)) {
         return res.status(400).json({ message: 'Provide valid chef id.' });
     }
 
-    // Check if userId exists and is valid
-    if (!userId || !isValidObjectId(userId)) {
+    // Check if studentId exists and is valid
+    if (!studentId || !isValidObjectId(studentId)) {
         return res.status(400).json({ message: 'Provide valid user id.' });
     }
 
     try {
-        const user = await User.findById(userId).select('pkg');
+        const student = await Student.findById(studentId).select('pkg');
 
-        if (user?.pkg === 'pro') {
+        if (student?.pkg === 'pro') {
             const result = await ChefReview.create({
                 chefId,
-                userId,
+                studentId,
                 rating,
                 message,
             });

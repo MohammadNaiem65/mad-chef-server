@@ -36,22 +36,32 @@ async function applyForPromotion(req, res) {
 
     // Check if the role has value
     if (!(role === 'chef' || role === 'admin')) {
-        res.status(400).json({ msg: 'A valid role is required' });
+        res.status(400).json({ message: 'A valid role is required' });
         return;
     }
 
-    // Check if the user has already been applied
-    const doc = await RolePromotionApplicant.findOne({
-        usersId: new ObjectId(userId),
-    });
-    if (doc?._id) {
-        res.status(400).json({ msg: 'User already applied' });
-        return;
+    try {
+        // Check if the user has already been applied
+        const doc = await RolePromotionApplicant.findOne({
+            usersId: new ObjectId(userId),
+            role,
+        });
+
+        if (doc?._id) {
+            res.status(400).json({ message: 'User already applied' });
+            return;
+        }
+
+        const result = await createRolePromotionDoc(userId, role);
+
+        res.json({ message: 'Successful', data: result });
+    } catch (error) {
+        console.error('Error fetching applyForPromotion:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
-
-    const result = await createRolePromotionDoc(userId, role);
-
-    res.json({ msg: 'Successful', data: result });
 }
 
 async function hasAppliedForPromotion(req, res) {
@@ -65,24 +75,30 @@ async function hasAppliedForPromotion(req, res) {
 
     // Check if the role has value
     if (!role) {
-        res.status(400).json({ msg: 'Role is required' });
+        res.status(400).json({ message: 'Role is required' });
         return;
     }
 
-    // Check if the user has applied
-    const doc = await RolePromotionApplicant.findOne({
-        usersId: new ObjectId(userId),
-        role,
-    });
+    try {
+        // Check if the user has applied
+        const applicationExists = await RolePromotionApplicant.exists({
+            usersId: new ObjectId(userId),
+            role,
+        });
 
-    if (!doc?._id) {
-        return res.json({
-            msg: 'User has not applied for promotion',
-            data: { status: false },
+        res.json({
+            message: applicationExists
+                ? 'User has applied for promotion'
+                : 'User has not applied for promotion',
+            data: { status: applicationExists },
+        });
+    } catch (error) {
+        console.error('Error fetching hasAppliedForPromotion:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
         });
     }
-
-    res.json({ msg: 'User has applied for promotion', data: { status: true } });
 }
 
 async function getRolePromotionApplications(req, res) {
@@ -109,9 +125,11 @@ async function getRolePromotionApplications(req, res) {
     ];
 
     try {
-        const result = await RolePromotionApplicant.aggregate(pipeline);
+        const [result, totalRecipes] = await Promise.all([
+            RolePromotionApplicant.aggregate(pipeline),
+            RolePromotionApplicant.countDocuments({}),
+        ]);
 
-        const totalRecipes = await RolePromotionApplicant.countDocuments({});
         const currPage = getCurrPage(
             _page <= 0 ? 1 : _page + 1,
             _limit,
@@ -125,8 +143,12 @@ async function getRolePromotionApplications(req, res) {
                 totalCount: totalRecipes,
             },
         });
-    } catch (err) {
-        res.status(500).json(err);
+    } catch (error) {
+        console.error('Error fetching getRolePromotionApplications:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
 }
 
@@ -139,23 +161,18 @@ async function getRolePromotionApplication(req, res) {
     }
 
     try {
-        const application = await RolePromotionApplicant.findById(
-            applicationId
-        );
+        const document = await RolePromotionApplicant.findById(applicationId);
 
-        if (application?._id) {
-            return res.json({
-                msg: 'Successful',
-                data: application,
-            });
-        } else {
-            return res.json({
-                msg: 'Successful',
-                data: {},
-            });
-        }
-    } catch (err) {
-        res.status(500).json(err);
+        res.json({
+            message: 'Successful',
+            data: document,
+        });
+    } catch (error) {
+        console.error('Error fetching getRolePromotionApplication:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
 }
 
@@ -169,35 +186,42 @@ async function updatePromotionApplicationStatus(req, res) {
 
     // Check if the status code is valid
     if (!Object.keys(APPLICATION_STATUS).includes(status)) {
-        return res.status(400).json({ msg: 'Invalid status code' });
+        return res.status(400).json({ message: 'Invalid status code' });
     }
 
     try {
         const application = await RolePromotionApplicant.findById(id);
 
-        // Validate not to update accepted or rejected application
+        // Validate if the application already have at the requested status
         if (Object.values(APPLICATION_STATUS).includes(application.status)) {
-            return res.status(400).json({ msg: 'Status can not be updated' });
+            return res.status(400).json({
+                message: `Status has already been ${application.status}`,
+            });
         }
 
         application.status = APPLICATION_STATUS[status];
 
         const result = await application.save();
 
-        return res.json({
-            msg: 'Successful',
+        res.json({
+            message: 'Successfully updated the status',
             data: result,
         });
-    } catch (err) {
-        res.status(500).json(err);
+    } catch (error) {
+        console.error(
+            'Error fetching updatePromotionApplicationStatus:',
+            error
+        );
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
 }
 
 async function deletePromotionApplication(req, res) {
     const { id: queryId } = req.query;
     const { id: paramId } = req.params;
-
-    console.log(queryId, paramId);
 
     const id = queryId || paramId;
 
@@ -211,22 +235,26 @@ async function deletePromotionApplication(req, res) {
 
         // Validate not to update accepted or rejected application
         if (
-            application.status === APPLICATION_STATUS[202] ||
-            application.status === APPLICATION_STATUS[400]
+            application.status !== APPLICATION_STATUS[202] ||
+            application.status !== APPLICATION_STATUS[400]
         ) {
-            const result = await RolePromotionApplicant.deleteOne({ _id: id });
-
-            return res.json({
-                msg: 'Successful',
-                data: result,
-            });
-        } else {
             return res.status(400).json({
-                msg: 'The document can not be deleted.',
+                message: `A ${application.status} document can not be deleted`,
             });
         }
-    } catch (err) {
-        res.status(500).json(err);
+
+        const result = await RolePromotionApplicant.deleteOne({ _id: id });
+
+        return res.json({
+            message: 'Successfully deleted the application',
+            data: result,
+        });
+    } catch (error) {
+        console.error('Error fetching deletePromotionApplication:', error);
+        res.status(500).json({
+            message: 'An error occurred',
+            error: error.message,
+        });
     }
 }
 
