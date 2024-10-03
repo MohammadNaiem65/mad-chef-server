@@ -7,8 +7,14 @@ const paymentReceiptSchema = new mongoose.Schema(
             ref: 'Student',
             required: true,
         },
-        username: String,
-        email: String,
+        username: {
+            type: String,
+            required: true,
+        },
+        email: {
+            type: String,
+            required: true,
+        },
         pkg: {
             type: String,
             required: true,
@@ -16,6 +22,7 @@ const paymentReceiptSchema = new mongoose.Schema(
         },
         transactionId: {
             type: String,
+            required: true,
         },
         amount: {
             type: Number,
