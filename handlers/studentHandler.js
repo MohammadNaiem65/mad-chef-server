@@ -10,7 +10,7 @@ const checkAuth = require('../middlewares/checkAuth');
 const checkAdmin = require('../middlewares/checkAdmin');
 const uploadImage = require('../middlewares/uploadImage');
 const {
-    getUser,
+    getStudent,
     getUsers,
     handleUserRolePromotion,
     getUserBookmarks,
@@ -32,13 +32,13 @@ const {
     updateUserData,
     getUserLike,
     getUserBookmark,
-} = require('../controllers/userController');
+} = require('../controllers/studentController');
 
 const router = express.Router();
 
 router.get('/', checkAuth, checkAdmin, getUsers);
 router.get('/user/verify-email', verifyUserEmail);
-router.get(['/user/:id', '/:id'], checkAuth, getUser);
+router.get(['/user/:id', '/:id'], checkAuth, getStudent);
 router.patch('/user/update-data', checkAuth, updateUserData);
 router.patch('/user/update-package', checkAuth, updateUserPackage);
 router.post(
@@ -123,13 +123,6 @@ router.delete(
     ['/user/:id/review/chef', '/:id/review/chef'],
     checkAuth,
     removeChefReview
-);
-
-// ! Role promotion related routes
-router.post(
-    '/user/:id/requests/:requestId/action',
-    checkAuth,
-    handleUserRolePromotion
 );
 
 module.exports = router;

@@ -1,5 +1,5 @@
-const admin = require('firebase-admin');
 const { default: mongoose } = require('mongoose');
+const admin = require('firebase-admin');
 const { ObjectId } = mongoose.Types;
 
 const validateMongoDBId = require('../utility/validateMongoDBId');
@@ -8,7 +8,7 @@ const generateJwtToken = require('../utility/generateJwtToken');
 const createSortObject = require('../utility/createSortObject');
 const getCurrPage = require('../utility/getCurrPage');
 
-const User = require('../models/User');
+const Student = require('../models/Student');
 const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
@@ -46,7 +46,7 @@ async function withTransaction(dbOperation) {
 }
 
 // middleware functions
-async function getUser(req, res) {
+async function getStudent(req, res) {
     const { id } = req.params;
     const { include, exclude } = req.query;
 
@@ -59,15 +59,15 @@ async function getUser(req, res) {
     const projection = createProjectionObject(include, exclude);
 
     try {
-        const user = await User.findById(id, projection);
+        const user = await Student.findById(id, projection);
 
         if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+            return res.status(404).json({ message: 'Student not found' });
         }
 
         res.json({ message: 'Successful', data: user });
     } catch (error) {
-        console.error('Error fetching user:', error);
+        console.error('Error fetching getStudent:', error);
         res.status(500).json({
             message: 'An error occurred',
             error: error.message,
@@ -110,8 +110,8 @@ async function getUsers(req, res) {
 
     try {
         const [users, totalUsersResult] = await Promise.all([
-            User.aggregate(pipeline),
-            User.aggregate([{ $count: 'total' }]),
+            Student.aggregate(pipeline),
+            Student.aggregate([{ $count: 'total' }]),
         ]);
 
         const totalUsers = totalUsersResult[0]?.total || 0;
@@ -143,7 +143,7 @@ async function verifyUserEmail(req, res) {
 
         if (uid) {
             // Find the user from DB
-            const user = await User.findById(customClaims._id);
+            const user = await Student.findById(customClaims._id);
 
             if (user?._id) {
                 // Update the user's emailVerified status
@@ -172,7 +172,7 @@ async function updateUserData(req, res) {
     }
 
     try {
-        const result = await User.updateOne({ _id: userId }, data);
+        const result = await Student.updateOne({ _id: userId }, data);
 
         res.json({
             data: result,
@@ -186,82 +186,90 @@ async function updateUserData(req, res) {
 
 async function updateUserPackage(req, res) {
     const { userId, firebaseId, userEmail, emailVerified, role } = req.user;
+    const session = await mongoose.startSession();
 
     try {
-        // Check if the user paid for the package
-        const paymentExists = await PaymentReceipt.exists({
-            userId,
-            pkg: 'student/pro-pkg',
-            status: 'succeeded',
-        });
+        await session.withTransaction(async () => {
+            // Check if the user paid for the package
+            const paymentExists = await PaymentReceipt.exists({
+                studentId: userId,
+                pkg: 'student/pro-pkg',
+                status: 'succeeded',
+            }).session(session);
 
-        if (!paymentExists) {
-            return res
-                .status(400)
-                .json({ message: 'No payment receipt found' });
-        }
+            if (!paymentExists) {
+                throw new Error('No payment receipt found');
+            }
 
-        // Update user's package in the DB
-        const result = await User.updateOne({ _id: userId }, { pkg: 'pro' });
+            // Update user's package in the DB
+            const result = await Student.updateOne(
+                { _id: userId },
+                { pkg: 'pro' },
+                { session }
+            );
 
-        if (result.modifiedCount === 0) {
-            return res
-                .status(304)
-                .json({ message: 'User package already up to date' });
-        }
+            if (result.modifiedCount === 0) {
+                throw new Error('Student package already up to date');
+            }
 
-        // Update the user's package in Firebase
-        await admin.auth().setCustomUserClaims(firebaseId, {
-            _id: userId,
-            role,
-            pkg: 'pro',
-        });
+            // Update the user's package in Firebase
+            await admin.auth().setCustomUserClaims(firebaseId, {
+                _id: userId,
+                role,
+                pkg: 'pro',
+            });
 
-        // Prepare user data for token generation
-        const userData = {
-            userEmail,
-            userId,
-            firebaseId,
-            emailVerified,
-            role,
-            pkg: 'pro',
-        };
+            // Prepare user data for token generation
+            const userData = {
+                userEmail,
+                userId,
+                firebaseId,
+                emailVerified,
+                role,
+                pkg: 'pro',
+            };
 
-        // Generate access and refresh tokens
-        const [accessToken, refreshToken] = await Promise.all([
-            generateJwtToken(userData, process.env.ACCESS_TOKEN_SECRET, {
-                expiresIn: '1h',
-            }),
-            generateJwtToken(userData, process.env.REFRESH_TOKEN_SECRET, {
-                expiresIn: '30 days',
-            }),
-        ]);
+            // Generate access and refresh tokens
+            const [accessToken, refreshToken] = await Promise.all([
+                generateJwtToken(userData, process.env.ACCESS_TOKEN_SECRET, {
+                    expiresIn: '1h',
+                }),
+                generateJwtToken(userData, process.env.REFRESH_TOKEN_SECRET, {
+                    expiresIn: '30 days',
+                }),
+            ]);
 
-        // Update refresh token in the database
-        await RefreshToken.findOneAndUpdate(
-            { userId: userData.userId },
-            { token: refreshToken },
-            { upsert: true, new: true }
-        );
+            // Update refresh token in the database
+            await RefreshToken.findOneAndUpdate(
+                { userId: userData.userId },
+                { token: refreshToken },
+                { upsert: true, new: true, session }
+            );
 
-        // Send response to user
-        return res
-            .cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
+            // Send response to user
+            res.cookie(process.env.REFRESH_TOKEN_COOKIE_NAME, refreshToken, {
                 maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
                 httpOnly: true,
                 secure: process.env.NODE_ENV !== 'development',
                 sameSite: 'None',
-            })
-            .json({
+            }).json({
                 message: 'Package successfully updated to pro',
                 data: { user: userData, accessToken },
             });
+        });
     } catch (error) {
         console.error('Error in updateUserPackage:', error);
-        res.status(500).json({
-            message: 'Internal server error',
+        res.status(
+            error.message === 'No payment receipt found' ? 400 : 500
+        ).json({
+            message:
+                error.message === 'No payment receipt found'
+                    ? error.message
+                    : 'Internal server error',
             error: error.message,
         });
+    } finally {
+        session.endSession();
     }
 }
 
@@ -277,7 +285,7 @@ async function getUserBookmark(req, res) {
 
     try {
         const bookmarkedDoc = await Bookmark.findOne({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
@@ -307,7 +315,7 @@ async function getUserBookmarks(req, res) {
 
     try {
         // Find bookmarks for the user
-        const bookmarks = await Bookmark.find({ userId: id });
+        const bookmarks = await Bookmark.find({ studentId: id });
 
         res.json({
             message: 'Bookmarks retrieved successfully',
@@ -338,7 +346,7 @@ async function markRecipeAsBookmark(req, res) {
         }
 
         const bookmarkExists = await Bookmark.exists({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
@@ -347,7 +355,7 @@ async function markRecipeAsBookmark(req, res) {
         }
 
         const newBookmark = await Bookmark.create({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
@@ -376,7 +384,7 @@ async function removeRecipeAsBookmark(req, res) {
         }
 
         const bookmarkExists = await Bookmark.exists({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
@@ -385,11 +393,11 @@ async function removeRecipeAsBookmark(req, res) {
         }
 
         const result = await Bookmark.deleteOne({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
-        res.json({ message: 'Successfully removed bookmark', data: {} });
+        res.json({ message: 'Successfully removed bookmark', data: result });
     } catch (error) {
         console.error('Error in markRecipeAsBookmark:', error);
         res.status(error.statusCode || 500).json({
@@ -416,7 +424,7 @@ async function getUserLike(req, res) {
 
     try {
         const likedDoc = await Like.findOne({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
             recipeId: new ObjectId(recipeId),
         });
 
@@ -453,7 +461,7 @@ async function getUserLikes(req, res) {
 
     try {
         const likes = await Like.find({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
         });
 
         res.json({ message: 'Successful', data: likes });
@@ -479,7 +487,7 @@ async function addLikeToRecipe(req, res) {
 
         const result = await withTransaction(async (session) => {
             const likeExists = await Like.exists({
-                userId: new ObjectId(id),
+                studentId: new ObjectId(id),
                 recipeId: new ObjectId(recipeId),
             });
 
@@ -490,7 +498,7 @@ async function addLikeToRecipe(req, res) {
             const newLike = await Like.create(
                 [
                     {
-                        userId: new ObjectId(id),
+                        studentId: new ObjectId(id),
                         recipeId: new ObjectId(recipeId),
                     },
                 ],
@@ -538,7 +546,10 @@ async function removeLikeFromRecipe(req, res) {
     try {
         const result = await withTransaction(async (session) => {
             const removedLike = await Like.findOneAndDelete(
-                { userId: new ObjectId(id), recipeId: new ObjectId(recipeId) },
+                {
+                    studentId: new ObjectId(id),
+                    recipeId: new ObjectId(recipeId),
+                },
                 { session }
             );
 
@@ -584,7 +595,7 @@ async function getRecipeRatings(req, res) {
 
     try {
         const ratings = await Rating.find({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
         });
 
         res.json({ message: 'Successful', data: ratings });
@@ -598,13 +609,15 @@ async function addRecipeRating(req, res) {
     const { recipeId, rating, message } = req.body;
 
     // validate user id and recipe id
-    validateMongoDBId(userId, res);
-    validateMongoDBId(recipeId, res);
-
+    if (!validateMongoDBId(userId, res)) {
+        return;
+    } else if (!validateMongoDBId(recipeId, res)) {
+        return;
+    }
     try {
         const result = await Rating.create({
             recipeId: new ObjectId(recipeId),
-            userId: new ObjectId(userId),
+            studentId: new ObjectId(userId),
             rating,
             message,
         });
@@ -620,21 +633,38 @@ async function editRecipeRating(req, res) {
     const { rating, message } = req.body;
 
     // validate docId of rating document
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
-        const result = await Rating.updateOne(
-            { _id: new ObjectId(docId) },
-            {
-                rating,
-                message,
-            },
-            { runValidators: true }
-        );
+        // Check if the document exists and fetch it
+        const existingRating = await Rating.findById(docId);
+        if (!existingRating) {
+            return res.status(404).json({ message: 'Rating not found' });
+        }
 
-        res.json({ message: 'Successful', data: result });
+        // Update only the fields that are provided
+        if (rating !== undefined) existingRating.rating = rating;
+        if (message !== undefined) existingRating.message = message;
+
+        // Save the updated document
+        const updatedRating = await existingRating.save();
+
+        res.json({
+            message: 'Rating updated successfully',
+            data: updatedRating,
+        });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        console.error('Error updating rating:', error);
+        if (error.name === 'ValidationError') {
+            return res
+                .status(400)
+                .json({ message: 'Validation error', errors: error.errors });
+        }
+        res.status(500).json({
+            message: 'An error occurred while updating the rating',
+        });
     }
 }
 
@@ -642,9 +672,17 @@ async function removeRecipeRating(req, res) {
     const { docId } = req.query;
 
     // validate recipe id
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
+        // Check if the document exists and fetch it
+        const existingRating = await Rating.findById(docId);
+        if (!existingRating) {
+            return res.status(404).json({ message: 'Rating not found' });
+        }
+
         const result = await Rating.deleteOne({
             _id: new ObjectId(docId),
         });
@@ -735,97 +773,8 @@ async function removeChefReview(req, res) {
     }
 }
 
-// ! Role promotion related routes
-async function handleUserRolePromotion(req, res) {
-    const { requestId } = req.params;
-    const actionResult = req.query.result;
-    const { userId, firebaseId } = req.user;
-
-    if (!actionResult) {
-        return res.status(400).json({ message: 'No action parameter found!' });
-    } else if (!requestId) {
-        return res.status(400).json({ message: 'Request id is required!' });
-    }
-
-    validateMongoDBId(userId, res);
-
-    try {
-        const requestedDocument = await RolePromotionApplicant.findById(
-            requestId
-        );
-
-        if (requestedDocument?._id) {
-            if (actionResult === 'accepted') {
-                const { name, email, emailVerified, img } = await User.findById(
-                    userId
-                );
-
-                if (!emailVerified) {
-                    requestedDocument.status = 'rejected';
-                    // update RolePromotionApplicant document
-                    await requestedDocument.save();
-
-                    res.json({
-                        message:
-                            'Your email is not verified! kindly verify your email first.',
-                    });
-                } else {
-                    requestedDocument.status = 'accepted';
-
-                    let roleUpgradedUser;
-
-                    // if the requested role is Chef - create new Chef document
-                    if (requestedDocument.role === 'chef') {
-                        roleUpgradedUser = new Chef({
-                            name,
-                            email,
-                            emailVerified,
-                            img,
-                            bio: 'Best cook in the town',
-                            yearsOfExperience: 3,
-                        });
-
-                        // delete User document from database
-                        await User.findByIdAndDelete(userId);
-                    }
-
-                    // update firebase custom claims
-                    await admin.auth().setCustomUserClaims(firebaseId, {
-                        _id: roleUpgradedUser._id,
-                        role: roleUpgradedUser.role,
-                    });
-
-                    // save Chef document
-                    await roleUpgradedUser.save();
-
-                    // update RolePromotionApplicant document
-                    await requestedDocument.save();
-
-                    // send response
-                    res.status(200).json({
-                        message: 'Successfully upgraded the role.',
-                    });
-                }
-            } else {
-                requestedDocument.status = 'rejected';
-                // update RolePromotionApplicant document
-                await requestedDocument.save();
-
-                // send response
-                res.status(200).json({
-                    message: 'Successfully rejected the request.',
-                });
-            }
-        } else {
-            res.json({ message: 'User promotion request not found' });
-        }
-    } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
-    }
-}
-
 module.exports = {
-    getUser,
+    getStudent,
     getUsers,
     verifyUserEmail,
     updateUserData,
@@ -846,5 +795,4 @@ module.exports = {
     addChefReview,
     editChefReview,
     removeChefReview,
-    handleUserRolePromotion,
 };

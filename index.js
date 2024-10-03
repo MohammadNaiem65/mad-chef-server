@@ -13,7 +13,7 @@ const serviceAccountConfig = require('./firebase.config.json');
 
 // Request handlers
 const authHandler = require('./handlers/authHandler');
-const userHandler = require('./handlers/userHandler');
+const studentHandler = require('./handlers/studentHandler');
 const chefHandler = require('./handlers/chefHandler');
 const adminHandler = require('./handlers/adminHandler');
 const recipeHandler = require('./handlers/recipeHandler');
@@ -63,7 +63,7 @@ app.get('/', (req, res) => {
 
 // Request endpoints
 app.use('/auth', authHandler);
-app.use('/users', userHandler);
+app.use('/users', studentHandler);
 app.use('/chefs', chefHandler);
 app.use('/admins', adminHandler);
 app.use('/recipes', recipeHandler);
