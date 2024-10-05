@@ -4,7 +4,9 @@ const { startSession } = require('mongoose');
 const jwt = require('jsonwebtoken');
 
 // internal imports
-const User = require('./../models/User');
+const Student = require('../models/Student');
+const Chef = require('../models/Chef');
+const Admin = require('../models/Admin');
 const RefreshToken = require('./../models/RefreshToken');
 const generateJwtToken = require('./../utility/generateJwtToken');
 
@@ -17,7 +19,7 @@ async function authenticate(req, res) {
     if (!userToken) {
         return res
             .status(401)
-            .json({ error: 'No authentication token provided' });
+            .json({ message: 'No authentication token provided' });
     }
 
     const auth = getAuth();
@@ -29,21 +31,22 @@ async function authenticate(req, res) {
 
         // Verify the Firebase token
         const decodedToken = await auth.verifyIdToken(userToken);
-        const { name, picture, email, email_verified, uid } = decodedToken;
-
-        // Prepare user data object
-        let userData = {
-            userEmail: email,
-            firebaseId: uid,
-            emailVerified: email_verified,
-        };
+        const { uid, _id, name, email, email_verified, role, pkg, picture } =
+            decodedToken;
 
         // Check if user exists in our database
-        let user = await User.findOne({ email }).session(session);
+        let user;
+        if (role === 'student') {
+            user = await Student.findById(_id).session(session);
+        } else if (role === 'chef') {
+            user = await Chef.findById(_id).session(session);
+        } else if (role === 'admin') {
+            user = await Admin.findById(_id).session(session);
+        }
 
-        if (!user) {
-            // User doesn't exist, create a new one
-            user = await User.create(
+        // If the user doesn't exist thats a registration request
+        if (!user && req.body?.reqType === 'registration') {
+            user = await Student.create(
                 [
                     {
                         name,
@@ -65,20 +68,30 @@ async function authenticate(req, res) {
                 role: user.role,
                 pkg: user.pkg,
             });
-        }
 
-        // Update userData with database information
-        userData = {
-            ...userData,
-            userId: user._id,
-            role: user.role,
-            pkg: user.pkg,
-        };
-
-        // Handle registration request
-        if (req.body?.reqType === 'registration') {
+            // Commit the transaction and send the response
             await session.commitTransaction();
             return res.status(201).json({ message: 'Registration successful' });
+        } else if (!user && req.body?.reqType !== 'registration') {
+            // Login request without user data - delete user data from firebase
+            await auth.deleteUser(uid);
+            return res
+                .status(400)
+                .json({ message: 'The user with the email does not exists' });
+        }
+
+        // Prepare user data object to generate token
+        const userData = {
+            userId: _id,
+            role,
+            firebaseId: uid,
+            userEmail: email,
+            emailVerified: email_verified,
+        };
+
+        // Add pkg field if exists
+        if (pkg) {
+            userData.pkg = pkg;
         }
 
         // Generate tokens for login
@@ -126,22 +139,22 @@ async function authenticate(req, res) {
         await session.abortTransaction();
 
         if (err.code === 'auth/id-token-expired') {
-            res.status(403).json({ error: 'Firebase auth token expired' });
+            res.status(403).json({ message: 'Firebase auth token expired' });
         } else if (err._message === 'User validation failed') {
             // Only attempt to delete the Firebase user if we successfully verified the token
             if (uid) {
                 await auth.deleteUser(uid).catch(console.error);
             }
-            res.status(400).json({ error: 'User validation failed' });
+            res.status(400).json({ message: 'User validation failed' });
         } else if (err.code === 11000) {
             res.status(409).json({
-                error: `A user with the ${
+                message: `A user with the ${
                     Object.keys(err.keyValue)[0]
                 } already exists`,
             });
         } else {
             console.error('Authentication error:', err);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(500).json({ message: 'Internal server error' });
         }
     } finally {
         session.endSession();

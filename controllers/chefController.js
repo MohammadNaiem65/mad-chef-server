@@ -87,7 +87,6 @@ async function getChefs(req, res) {
     } = req.query;
     const _page = Math.max(0, parseInt(p || page) - 1);
     const _limit = Math.max(1, parseInt(l || limit));
-    const _role = role === 'student' ? 'user' : role;
 
     // Create projection object
     const projection = createProjectionObject(include, exclude);
@@ -97,7 +96,7 @@ async function getChefs(req, res) {
 
     // Create filter object based on role
     const filterObj =
-        _role !== 'admin' ? { recipes: { $exists: true, $ne: [] } } : {};
+        role !== 'admin' ? { recipes: { $exists: true, $ne: [] } } : {};
 
     // Add rating calculation if needed
     const includeRating =
