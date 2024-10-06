@@ -49,7 +49,7 @@ async function getPaymentReceipts(req, res) {
     } = req.query;
 
     // Stop the execution if the studentId is invalid
-    if (!validateMongoDBId(studentId, res)) {
+    if (studentId && !validateMongoDBId(studentId, res)) {
         return;
     }
 
@@ -93,7 +93,7 @@ async function getPaymentReceipts(req, res) {
             },
         });
     } catch (err) {
-        console.error('Error in getChefReviews:', err);
+        console.error('Error in getPaymentReceipts:', err);
         res.status(500).json({
             message: 'Internal server error',
             error: err.message,
