@@ -8,7 +8,7 @@ const { isValidObjectId } = require('mongoose');
  * @returns {boolean} - Returns true if the ID is valid, false otherwise.
  */
 function validateMongoDBId(id, res) {
-    if (!isValidObjectId(id)) {
+    if (!id || !isValidObjectId(id)) {
         // Send a 400 response indicating the ID is invalid
         res.status(400).json({ message: 'Invalid MongoDB ID provided.' });
         return false; // Indicate that the ID is invalid

@@ -13,7 +13,7 @@ async function subscribeToNewsletter(req, res) {
     }
 
     // Validate userId if provided
-    if (userId && !validateMongoDBId(userId)) {
+    if (userId && !validateMongoDBId(userId, res)) {
         return;
     }
 
