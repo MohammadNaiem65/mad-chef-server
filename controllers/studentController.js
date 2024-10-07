@@ -9,16 +9,15 @@ const createSortObject = require('../utility/createSortObject');
 const getCurrPage = require('../utility/getCurrPage');
 
 const Student = require('../models/Student');
-const Chef = require('../models/Chef');
 const Bookmark = require('../models/Bookmark');
 const Like = require('../models/Like');
 const Rating = require('../models/Rating');
 const ChefReview = require('../models/ChefReview');
-const RolePromotionApplicant = require('../models/RolePromotionApplicant');
 const PaymentReceipt = require('../models/PaymentReceipt');
 const RefreshToken = require('../models/RefreshToken');
 const Recipe = require('../models/Recipe');
 
+// Custom error creation function
 function createError(message, statusCode) {
     return { message, statusCode };
 }
@@ -45,13 +44,13 @@ async function withTransaction(dbOperation) {
     }
 }
 
-// middleware functions
+// Middleware functions
 async function getStudent(req, res) {
     const { id } = req.params;
     const { include, exclude } = req.query;
 
     // Validate MongoDB ID
-    if (!validateMongoDBId(id)) {
+    if (!validateMongoDBId(id, res)) {
         return;
     }
 
@@ -70,12 +69,12 @@ async function getStudent(req, res) {
         console.error('Error fetching getStudent:', error);
         res.status(500).json({
             message: 'An error occurred',
-            error: error.message,
+            error: error?.message,
         });
     }
 }
 
-async function getUsers(req, res) {
+async function getStudents(req, res) {
     const {
         p,
         page = 1,
@@ -125,66 +124,94 @@ async function getUsers(req, res) {
             },
         });
     } catch (error) {
-        console.error('Error in getUsers:', error);
+        console.error('Error in getStudents:', error);
         res.status(500).json({
             message: 'Internal server error',
-            error: error.message,
+            error: error?.message,
         });
     }
 }
 
-async function verifyUserEmail(req, res) {
+async function verifyStudentEmail(req, res) {
     const { uid: firebaseId } = req.query;
 
     try {
-        // Verify the ID token
-        const user = await admin.auth().getUser(firebaseId);
-        const { uid, emailVerified, customClaims } = user;
+        // Verify the Firebase user and get their details
+        const { uid, customClaims } = await admin.auth().getUser(firebaseId);
 
-        if (uid) {
-            // Find the user from DB
-            const user = await Student.findById(customClaims._id);
-
-            if (user?._id) {
-                // Update the user's emailVerified status
-                user.emailVerified = emailVerified;
-                await user.save();
-
-                res.redirect('http://localhost:5173/profile/user/my-profile');
-            } else {
-                res.status(400).send('Email verification failed');
-            }
-        } else {
-            res.status(400).send('Email verification failed');
+        // If no uid is returned, the Firebase user doesn't exist
+        if (!uid) {
+            console.error(
+                'Error in verifyStudentEmail: Firebase user not found'
+            );
+            return res.status(404).send('User not found');
         }
+
+        // Find the corresponding user in our database
+        const user = await Student.findById(customClaims._id);
+
+        // If no user is found in our database, return an error
+        if (!user) {
+            console.error(
+                'Error in verifyStudentEmail: Database user not found'
+            );
+            return res.status(404).send('User not found in database');
+        }
+
+        // Update the user's emailVerified status in our database
+        user.emailVerified = true;
+        await user.save();
+
+        // TODO: UPDATE the URL before hosting it
+        // Redirect to the user's profile page
+        res.redirect('http://localhost:5173/profile/student/my-profile');
     } catch (error) {
-        console.error('Error verifying ID token:', error);
+        console.error('Error in verifyStudentEmail:', error);
         res.status(500).send('Internal server error');
     }
 }
 
-async function updateUserData(req, res) {
+async function updateStudentData(req, res) {
     const { userId } = req.user;
-    const data = req.body;
-
-    if (!data) {
-        return res.status(400).json({ message: 'No payload found.' });
-    }
+    const updateData = req.body;
 
     try {
-        const result = await Student.updateOne({ _id: userId }, data);
+        // Check if the request body is empty
+        if (!updateData || Object.keys(updateData).length === 0) {
+            throw createError('No update data provided.', 400);
+        }
+
+        // Find the student document
+        const student = await Student.findById(userId);
+
+        if (!student) {
+            throw createError('Student not found.', 404);
+        }
+
+        // Apply the updates to the student document
+        Object.assign(student, updateData);
+
+        // Run validation and save the document
+        const updatedStudent = await student.save();
 
         res.json({
-            data: result,
-            message: 'Successfully updated data',
+            data: updatedStudent,
+            message: 'Successfully updated student data',
         });
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.error('Error in updateStudentData:', error);
+
+        if (error.statusCode) {
+            return res.status(error.statusCode || 500).json({
+                message:
+                    error?.message ||
+                    'An error occurred while updating student data',
+            });
+        }
     }
 }
 
-async function updateUserPackage(req, res) {
+async function updateStudentPackage(req, res) {
     const { userId, firebaseId, userEmail, emailVerified, role } = req.user;
     const session = await mongoose.startSession();
 
@@ -198,7 +225,7 @@ async function updateUserPackage(req, res) {
             }).session(session);
 
             if (!paymentExists) {
-                throw new Error('No payment receipt found');
+                throw createError('No payment receipt found', 400);
             }
 
             // Update user's package in the DB
@@ -209,7 +236,7 @@ async function updateUserPackage(req, res) {
             );
 
             if (result.modifiedCount === 0) {
-                throw new Error('Student package already up to date');
+                throw createError('Student package already up to date', 200);
             }
 
             // Update the user's package in Firebase
@@ -258,15 +285,14 @@ async function updateUserPackage(req, res) {
             });
         });
     } catch (error) {
-        console.error('Error in updateUserPackage:', error);
+        console.error('Error in updateStudentPackage:', error);
         res.status(
-            error.message === 'No payment receipt found' ? 400 : 500
+            error?.message === 'No payment receipt found' ? 400 : 500
         ).json({
             message:
-                error.message === 'No payment receipt found'
-                    ? error.message
+                error?.message === 'No payment receipt found'
+                    ? error?.message
                     : 'Internal server error',
-            error: error.message,
         });
     } finally {
         session.endSession();
@@ -274,7 +300,7 @@ async function updateUserPackage(req, res) {
 }
 
 // ! Bookmarks related routes
-async function getUserBookmark(req, res) {
+async function getStudentBookmark(req, res) {
     const { id } = req.params;
     const { recipeId } = req.query;
 
@@ -291,25 +317,24 @@ async function getUserBookmark(req, res) {
 
         if (!bookmarkedDoc) {
             return res.json({
-                message: "You didn't like the recipe.",
+                message: "You didn't bookmark the recipe.",
                 data: {},
             });
         }
 
         res.json({ message: 'Successful', data: bookmarkedDoc });
     } catch (error) {
-        console.error('Error in getUserBookmark:', error);
+        console.error('Error in getStudentBookmark:', error);
         res.status(500).json({
-            message: 'An error occurred',
-            error: error.message,
+            message: error?.message || 'An error occurred',
         });
     }
 }
 
-async function getUserBookmarks(req, res) {
+async function getStudentBookmarks(req, res) {
     const { id } = req.params;
 
-    if (!validateMongoDBId(id)) {
+    if (!validateMongoDBId(id, res)) {
         return;
     }
 
@@ -318,14 +343,13 @@ async function getUserBookmarks(req, res) {
         const bookmarks = await Bookmark.find({ studentId: id });
 
         res.json({
-            message: 'Bookmarks retrieved successfully',
+            message: 'Successful',
             data: bookmarks,
         });
     } catch (error) {
-        console.error('Error in getUserBookmarks:', error);
+        console.error('Error in getStudentBookmarks:', error);
         res.status(500).json({
             message: 'An error occurred while fetching bookmarks',
-            data: null,
         });
     }
 }
@@ -363,7 +387,7 @@ async function markRecipeAsBookmark(req, res) {
     } catch (error) {
         console.error('Error in markRecipeAsBookmark:', error);
         res.status(error.statusCode || 500).json({
-            message: error.message || 'An unexpected error occurred',
+            message: error?.message || 'An unexpected error occurred',
         });
     }
 }
@@ -401,24 +425,24 @@ async function removeRecipeAsBookmark(req, res) {
     } catch (error) {
         console.error('Error in markRecipeAsBookmark:', error);
         res.status(error.statusCode || 500).json({
-            message: error.message || 'An unexpected error occurred',
+            message: error?.message || 'An unexpected error occurred',
         });
     }
 }
 
 // ! Likes related routes
-async function getUserLike(req, res) {
+async function getStudentLike(req, res) {
     const { id } = req.params;
     const { recipeId } = req.query;
     const { userId } = req.user;
 
     // Ensure authorization
     if (id !== userId) {
-        return res.status(403).json({ message: 'Unauthorized access' });
+        throw createError('Unauthorized access', 403);
     }
 
     // Validate user id and recipe id
-    if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
+    if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
         return;
     }
 
@@ -437,21 +461,20 @@ async function getUserLike(req, res) {
 
         res.json({ message: 'Successful', data: likedDoc });
     } catch (error) {
-        console.error('Error in getUserLike:', error);
-        res.status(500).json({
-            message: 'An error occurred',
-            error: error.message,
+        console.error('Error in getStudentLike:', error);
+        res.status(error?.status || 500).json({
+            message: error?.message || 'An error occurred',
         });
     }
 }
 
-async function getUserLikes(req, res) {
+async function getStudentLikes(req, res) {
     const { id } = req.params;
     const { userId } = req.user;
 
     // Ensure authorization
     if (id !== userId) {
-        return res.status(403).json({ message: 'Unauthorized access' });
+        throw createError('Unauthorized access', 403);
     }
 
     // validate user id
@@ -466,7 +489,9 @@ async function getUserLikes(req, res) {
 
         res.json({ message: 'Successful', data: likes });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        res.status(error?.status || 500).json({
+            message: error?.message || 'An error occurred',
+        });
     }
 }
 
@@ -481,7 +506,7 @@ async function addLikeToRecipe(req, res) {
         }
 
         // validate user id and recipe id
-        if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
+        if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
             return;
         }
 
@@ -525,7 +550,7 @@ async function addLikeToRecipe(req, res) {
     } catch (error) {
         console.error('Error in addLikeToRecipe:', error);
         res.status(error.statusCode || 500).json({
-            message: error.message || 'An unexpected error occurred',
+            message: error?.message || 'An unexpected error occurred',
         });
     }
 }
@@ -539,7 +564,7 @@ async function removeLikeFromRecipe(req, res) {
         throw createError('Unauthorized access', 403);
     }
 
-    if (!validateMongoDBId(id) || !validateMongoDBId(recipeId)) {
+    if (!validateMongoDBId(id, res) || !validateMongoDBId(recipeId, res)) {
         return;
     }
 
@@ -579,7 +604,7 @@ async function removeLikeFromRecipe(req, res) {
     } catch (error) {
         console.error('Error in removeLikeFromRecipe:', error);
         res.status(error.statusCode || 500).json({
-            message: error.message || 'An unexpected error occurred',
+            message: error?.message || 'An unexpected error occurred',
         });
     }
 }
@@ -694,20 +719,22 @@ async function removeRecipeRating(req, res) {
 }
 
 // ! Chef reviews related routes
-async function getChefReviews(req, res) {
+async function getChefReviewsByStudent(req, res) {
     const { id } = req.params;
 
     // validate user id
-    validateMongoDBId(id, res);
+    if (!validateMongoDBId(id, res)) {
+        return;
+    }
 
     try {
         const reviews = await ChefReview.find({
-            userId: new ObjectId(id),
+            studentId: new ObjectId(id),
         });
 
         res.json({ message: 'Successful', data: reviews });
     } catch (error) {
-        res.status(500).json({ message: 'An error occurred', data: error });
+        res.status(500).json({ message: 'An error occurred' });
     }
 }
 
@@ -716,13 +743,16 @@ async function addChefReview(req, res) {
     const { chefId, rating, message } = req.body;
 
     // validate user id and recipe id
-    validateMongoDBId(userId, res);
-    validateMongoDBId(chefId, res);
+    if (!validateMongoDBId(userId, res)) {
+        return;
+    } else if (validateMongoDBId(chefId, res)) {
+        return;
+    }
 
     try {
         const result = await ChefReview.create({
             chefId: new ObjectId(chefId),
-            userId: new ObjectId(userId),
+            studentId: new ObjectId(userId),
             rating,
             message,
         });
@@ -738,29 +768,31 @@ async function editChefReview(req, res) {
     const { rating, message } = req.body;
 
     // validate docId of review document
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
-        const result = await ChefReview.updateOne(
-            { _id: new ObjectId(docId) },
-            {
-                rating,
-                message,
-            },
-            { runValidators: true }
-        );
+        const review = await ChefReview.findOne({ _id: new ObjectId(docId) });
 
-        res.json({ message: 'Successful', data: result });
+        review.rating = rating;
+        review.message = message;
+
+        review.save();
+
+        res.json({ message: 'Successful', data: review });
     } catch (error) {
         res.status(500).json({ message: 'An error occurred', data: error });
     }
 }
 
-async function removeChefReview(req, res) {
+async function deleteChefReview(req, res) {
     const { docId } = req.query;
 
     // validate recipe id
-    validateMongoDBId(docId, res);
+    if (!validateMongoDBId(docId, res)) {
+        return;
+    }
 
     try {
         const result = await ChefReview.deleteOne({
@@ -775,24 +807,24 @@ async function removeChefReview(req, res) {
 
 module.exports = {
     getStudent,
-    getUsers,
-    verifyUserEmail,
-    updateUserData,
-    updateUserPackage,
+    getStudents,
+    verifyStudentEmail,
+    updateStudentData,
+    updateStudentPackage,
     markRecipeAsBookmark,
-    getUserBookmark,
-    getUserBookmarks,
+    getStudentBookmark,
+    getStudentBookmarks,
     removeRecipeAsBookmark,
-    getUserLike,
-    getUserLikes,
+    getStudentLike,
+    getStudentLikes,
     addLikeToRecipe,
     removeLikeFromRecipe,
     getRecipeRatings,
     addRecipeRating,
     editRecipeRating,
     removeRecipeRating,
-    getChefReviews,
+    getChefReviewsByStudent,
     addChefReview,
     editChefReview,
-    removeChefReview,
+    deleteChefReview,
 };

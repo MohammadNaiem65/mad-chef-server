@@ -11,118 +11,121 @@ const checkAdmin = require('../middlewares/checkAdmin');
 const uploadImage = require('../middlewares/uploadImage');
 const {
     getStudent,
-    getUsers,
-    handleUserRolePromotion,
-    getUserBookmarks,
+    getStudents,
+    getStudentBookmarks,
     markRecipeAsBookmark,
     removeRecipeAsBookmark,
-    getUserLikes,
+    getStudentLikes,
     addLikeToRecipe,
     removeLikeFromRecipe,
     addRecipeRating,
     getRecipeRatings,
     removeRecipeRating,
-    getChefReviews,
+    getChefReviewsByStudent,
     addChefReview,
-    removeChefReview,
+    deleteChefReview,
     editRecipeRating,
     editChefReview,
-    verifyUserEmail,
-    updateUserPackage,
-    updateUserData,
-    getUserLike,
-    getUserBookmark,
+    verifyStudentEmail,
+    updateStudentPackage,
+    updateStudentData,
+    getStudentLike,
+    getStudentBookmark,
 } = require('../controllers/studentController');
 
 const router = express.Router();
 
-router.get('/', checkAuth, checkAdmin, getUsers);
-router.get('/user/verify-email', verifyUserEmail);
-router.get(['/user/:id', '/:id'], checkAuth, getStudent);
-router.patch('/user/update-data', checkAuth, updateUserData);
-router.patch('/user/update-package', checkAuth, updateUserPackage);
+router.get('/', checkAuth, checkAdmin, getStudents);
+router.get('/student/verify-email', verifyStudentEmail);
+router.get(['/student/:id', '/:id'], checkAuth, getStudent);
+router.patch('/student/update-data', checkAuth, updateStudentData);
+router.patch('/student/update-package', checkAuth, updateStudentPackage);
 router.post(
-    '/user/upload-profile-picture',
+    '/student/upload-profile-picture',
     checkAuth,
     upload.single('profile-image'),
     uploadImage,
-    updateUserData
+    updateStudentData
 );
 
 // ! Bookmarks related routes
-router.get(['/user/:id/bookmark', '/:id/bookmark'], checkAuth, getUserBookmark);
 router.get(
-    ['/user/:id/bookmarks', '/:id/bookmarks'],
+    ['/student/:id/bookmark', '/:id/bookmark'],
     checkAuth,
-    getUserBookmarks
+    getStudentBookmark
+);
+router.get(
+    ['/student/:id/bookmarks', '/:id/bookmarks'],
+    checkAuth,
+    getStudentBookmarks
 );
 router.post(
-    ['/user/:id/add-bookmark', '/:id/add-bookmark'],
+    ['/student/:id/add-bookmark', '/:id/add-bookmark'],
     checkAuth,
     markRecipeAsBookmark
 );
 router.delete(
-    ['/user/:id/remove-bookmark', '/:id/remove-bookmark'],
+    ['/student/:id/remove-bookmark', '/:id/remove-bookmark'],
     checkAuth,
     removeRecipeAsBookmark
 );
 
 // ! Likes related routes
-router.get(['/user/:id/like', '/:id/like'], checkAuth, getUserLike);
-router.get(['/user/:id/likes', '/:id/likes'], checkAuth, getUserLikes);
+router.get(['/student/:id/like', '/:id/like'], checkAuth, getStudentLike);
+router.get(['/student/:id/likes', '/:id/likes'], checkAuth, getStudentLikes);
 router.post(
-    ['/user/:id/add-like', '/:id/add-like'],
+    ['/student/:id/add-like', '/:id/add-like'],
     checkAuth,
     addLikeToRecipe
 );
 router.delete(
-    ['/user/:id/remove-like', '/:id/remove-like'],
+    ['/student/:id/remove-like', '/:id/remove-like'],
     checkAuth,
     removeLikeFromRecipe
 );
 
 // ! Recipe ratings related routes
 router.get(
-    ['/user/:id/rating/recipe', '/:id/rating/recipe'],
+    ['/student/:id/rating/recipe', '/:id/rating/recipe'],
     checkAuth,
     getRecipeRatings
 );
 router.post(
-    ['/user/:id/rating/recipe', '/:id/rating/recipe'],
+    ['/student/:id/rating/recipe', '/:id/rating/recipe'],
     checkAuth,
     addRecipeRating
 );
 router.patch(
-    ['/user/:id/rating/recipe', '/:id/rating/recipe'],
+    ['/student/:id/rating/recipe', '/:id/rating/recipe'],
     checkAuth,
     editRecipeRating
 );
 router.delete(
-    ['/user/:id/rating/recipe', '/:id/rating/recipe'],
+    ['/student/:id/rating/recipe', '/:id/rating/recipe'],
     checkAuth,
     removeRecipeRating
 );
 
 // ! Chef reviews related routes
 router.get(
-    ['/user/:id/review/chef', '/:id/review/chef'],
+    ['/student/:id/review/chef', '/:id/review/chef'],
     checkAuth,
-    getChefReviews
+    getChefReviewsByStudent
 );
 router.post(
-    ['/user/:id/review/chef', '/:id/review/chef'],
+    ['/student/:id/review/chef', '/:id/review/chef'],
     checkAuth,
     addChefReview
 );
 router.patch(
-    ['/user/:id/review/chef', '/:id/review/chef'],
+    ['/student/:id/review/chef', '/:id/review/chef'],
     checkAuth,
     editChefReview
 );
 router.delete(
-    ['/user/:id/review/chef', '/:id/review/chef'],
+    ['/student/:id/review/chef', '/:id/review/chef'],
     checkAuth,
-    removeChefReview
+    deleteChefReview
 );
 
 module.exports = router;

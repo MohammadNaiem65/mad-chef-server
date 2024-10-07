@@ -63,7 +63,7 @@ app.get('/', (req, res) => {
 
 // Request endpoints
 app.use('/auth', authHandler);
-app.use('/users', studentHandler);
+app.use('/students', studentHandler);
 app.use('/chefs', chefHandler);
 app.use('/admins', adminHandler);
 app.use('/recipes', recipeHandler);
