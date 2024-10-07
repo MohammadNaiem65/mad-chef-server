@@ -5,8 +5,6 @@ const jwt = require('jsonwebtoken');
 
 // internal imports
 const Student = require('../models/Student');
-const Chef = require('../models/Chef');
-const Admin = require('../models/Admin');
 const RefreshToken = require('./../models/RefreshToken');
 const generateJwtToken = require('./../utility/generateJwtToken');
 
@@ -34,19 +32,9 @@ async function authenticate(req, res) {
         const { uid, _id, name, email, email_verified, role, pkg, picture } =
             decodedToken;
 
-        // Check if user exists in our database
-        let user;
-        if (role === 'student') {
-            user = await Student.findById(_id).session(session);
-        } else if (role === 'chef') {
-            user = await Chef.findById(_id).session(session);
-        } else if (role === 'admin') {
-            user = await Admin.findById(_id).session(session);
-        }
-
         // If the user doesn't exist thats a registration request
-        if (!user && req.body?.reqType === 'registration') {
-            user = await Student.create(
+        if (!_id && req.body?.reqType === 'registration') {
+            const [user] = await Student.create(
                 [
                     {
                         name,
@@ -58,9 +46,7 @@ async function authenticate(req, res) {
                     },
                 ],
                 { session }
-            );
-
-            user = user[0]; // Mongo returns an array for create operations within a session
+            ); // Mongo returns an array for create operations within a session
 
             // Set custom claims in Firebase
             await auth.setCustomUserClaims(uid, {
@@ -72,7 +58,7 @@ async function authenticate(req, res) {
             // Commit the transaction and send the response
             await session.commitTransaction();
             return res.status(201).json({ message: 'Registration successful' });
-        } else if (!user && req.body?.reqType !== 'registration') {
+        } else if (!_id && req.body?.reqType !== 'registration') {
             // Login request without user data - delete user data from firebase
             await auth.deleteUser(uid);
             return res
