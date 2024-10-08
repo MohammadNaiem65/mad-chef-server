@@ -24,6 +24,7 @@ router.patch('/admin/update-data', checkAuth, checkAdmin, updateAdminData);
 router.post(
     '/admin/upload-profile-picture',
     checkAuth,
+    checkAdmin,
     upload.single('profile-image'),
     uploadImage,
     updateAdminData

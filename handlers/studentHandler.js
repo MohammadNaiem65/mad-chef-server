@@ -32,6 +32,7 @@ const {
     getStudentLike,
     getStudentBookmark,
 } = require('../controllers/studentController');
+const checkStudent = require('../middlewares/checkStudent');
 
 const router = express.Router();
 
@@ -43,6 +44,7 @@ router.patch('/student/update-package', checkAuth, updateStudentPackage);
 router.post(
     '/student/upload-profile-picture',
     checkAuth,
+    checkStudent,
     upload.single('profile-image'),
     uploadImage,
     updateStudentData
