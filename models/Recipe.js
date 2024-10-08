@@ -32,6 +32,11 @@ const recipeSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        // Cloudinary public id
+        imgId: {
+            type: String,
+            required: true,
+        },
         imgTitle: {
             type: String,
         },
