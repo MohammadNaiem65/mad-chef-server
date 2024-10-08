@@ -1,22 +1,48 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const cloudinary = require('cloudinary').v2;
 
 async function uploadImage(req, res, next) {
-    if (!req.file) {
+    // If it's recipe update request and no photo has been updated then move to next middleware
+    if (req.path.includes('/recipes/update-recipe') && !req.file) {
+        next();
+    } else if (!req.file) {
         return res.status(400).json({ message: 'No payload found.' });
     }
 
     const imgPath = req.file.path;
+    const { imgId } = req.body;
     const { userId } = req.user;
 
     try {
-        // delete the previous image
-        await cloudinary.uploader.destroy(userId);
+        let folder = '/mad-chef';
+        let public_id;
+
+        // Set the folder and public_id based on the request path
+        if (req.path.includes('/upload-profile-picture')) {
+            folder += '/profile-pictures';
+            public_id = userId;
+
+            // delete the previous profile picture
+            await cloudinary.uploader.destroy(userId);
+        } else if (req.path.includes('/post-recipe')) {
+            folder += '/recipe-pictures';
+
+            // Generate public_id
+            const randomID = crypto.randomBytes(16).toString('hex');
+            public_id = `${userId}-${randomID}`;
+        } else if (req.path.includes('/update-recipe')) {
+            folder += '/recipe-pictures';
+            public_id = imgId;
+
+            // delete the previous image
+            await cloudinary.uploader.destroy(public_id);
+        }
 
         // Upload to Cloudinary
         const result = await cloudinary.uploader.upload(imgPath, {
-            folder: 'mad-chef/profile-pictures',
-            public_id: userId,
+            folder,
+            public_id,
             resource_type: 'image',
         });
 
@@ -24,11 +50,15 @@ async function uploadImage(req, res, next) {
         fs.unlinkSync(imgPath);
 
         // Set the data to req.body
-        req.body = { img: result.secure_url };
+        req.body = {
+            ...req.body,
+            img: result.secure_url,
+            imgId: public_id,
+        };
 
         next();
     } catch (error) {
-        console.error(error);
+        console.log(error);
         // Ensure cleaning up the temporary file even if an error occurs
         if (fs.existsSync(imgPath)) {
             fs.unlinkSync(imgPath);
