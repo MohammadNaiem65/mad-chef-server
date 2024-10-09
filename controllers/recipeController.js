@@ -1,6 +1,8 @@
 const { default: mongoose } = require('mongoose');
+const cloudinary = require('cloudinary').v2;
 const { ObjectId } = mongoose.Types;
 
+const Chef = require('../models/Chef');
 const Recipe = require('../models/Recipe');
 const Rating = require('../models/Rating');
 const getCurrPage = require('../utility/getCurrPage');
@@ -180,7 +182,7 @@ async function searchRecipes(req, res) {
             },
         });
     } catch (error) {
-        console.error(error);
+        console.log(error);
         res.status(500).json({
             error: 'An error occurred while searching recipes',
         });
@@ -253,34 +255,110 @@ async function getRecipe(req, res) {
             message: 'Successful',
             data: recipe[0],
         });
-    } catch (err) {
-        console.error('Error in getRecipe:', err);
+    } catch (error) {
+        console.log('Error in getRecipe:', error);
         res.status(500).json({
             message: 'Internal server error',
-            error: err.message,
+            error: error.message,
         });
     }
 }
 
 async function postRecipe(req, res) {
-    const { userId, role } = req.user;
-    const { title, ingredients, method, img, author } = req.body;
+    const { userId } = req.user;
+    const { title, ingredients, method, img, imgTitle, imgId, region } =
+        req.body;
 
     // Validate the userId
-    validateMongoDBId(userId, res);
+    if (!validateMongoDBId(userId, res)) {
+        return;
+    }
 
-    if (userId && role === 'chef') {
-        const doc = await Recipe.create({
-            title,
-            ingredients,
-            method,
-            img,
-            author,
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        // Create the new recipe
+        const [newRecipe] = await Recipe.create(
+            [
+                {
+                    title,
+                    ingredients: JSON.parse(ingredients),
+                    region,
+                    method,
+                    img,
+                    imgId,
+                    imgTitle,
+                    author: userId,
+                },
+            ],
+            { session }
+        );
+
+        // Update the Chef document
+        await Chef.findByIdAndUpdate(
+            userId,
+            { $push: { recipes: newRecipe._id } },
+            { session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+
+        res.json({ message: 'Successful', data: newRecipe });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        await cloudinary.uploader.destroy(imgId);
+
+        console.log('Error in postRecipe:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
         });
+    }
+}
 
-        res.json({ message: 'Successful', data: doc });
-    } else {
-        res.status(401).json({ message: 'Only chef can post recipe.' });
+async function editRecipe(req, res) {
+    const { userId } = req.user;
+    const { recipeId } = req.params;
+    const { title, author, ingredients, method, img, imgTitle, imgId, region } =
+        req.body;
+
+    // Validate the userId
+    if (!validateMongoDBId(userId, res) || !validateMongoDBId(recipeId, res)) {
+        return;
+    } // Check if the user is the author
+    else if (!new ObjectId(userId).equals(author)) {
+        return res
+            .status(401)
+            .json({ message: 'You are unauthorized to edit this recipe' });
+    }
+
+    try {
+        // Update the recipe
+        const updatedRecipe = await Recipe.findByIdAndUpdate(
+            recipeId,
+            {
+                title,
+                ingredients: JSON.parse(ingredients),
+                region,
+                method,
+                img,
+                imgId,
+                imgTitle,
+            },
+            { new: true }
+        );
+
+        res.json({ message: 'Successful', data: updatedRecipe });
+    } catch (error) {
+        console.log('Error in postRecipe:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
     }
 }
 
@@ -382,11 +460,12 @@ async function getRecipeRatings(req, res) {
             },
         });
     } catch (error) {
-        console.error(error);
+        console.log(error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 }
 
+// TODO: Add authorization here for updating recipe status
 async function updateRecipeStatus(req, res) {
     const { recipeId: paramId } = req.params;
     const { status, recipeId: queryId } = req.query;
@@ -406,11 +485,15 @@ async function updateRecipeStatus(req, res) {
 
         res.json({ message: 'Successful', data: result });
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.log('Error in updateRecipeStatus:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
     }
 }
 
+// TODO: Also delete recipe image from cloudinary
 async function deleteRecipe(req, res) {
     const { recipeId: paramId } = req.params;
     const { recipeId: queryId } = req.query;
@@ -438,14 +521,18 @@ async function deleteRecipe(req, res) {
             });
         }
     } catch (error) {
-        console.log(error);
-        res.json(error);
+        console.log('Error in deleteRecipe:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
     }
 }
 
 module.exports = {
     getRecipe,
     postRecipe,
+    editRecipe,
     searchRecipes,
     getRecipeRatings,
     updateRecipeStatus,
