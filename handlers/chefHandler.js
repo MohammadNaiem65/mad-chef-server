@@ -38,6 +38,7 @@ router.patch('/chef/update-data', checkAuth, checkChef, updateChefData);
 router.post(
     '/chef/upload-profile-picture',
     checkAuth,
+    checkChef,
     upload.single('profile-image'),
     uploadImage,
     updateChefData
