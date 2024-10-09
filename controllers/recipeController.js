@@ -465,10 +465,10 @@ async function getRecipeRatings(req, res) {
     }
 }
 
-// TODO: Add authorization here for updating recipe status
 async function updateRecipeStatus(req, res) {
     const { recipeId: paramId } = req.params;
     const { status, recipeId: queryId } = req.query;
+    const { userId, role } = req.user;
 
     const recipeId = paramId || queryId;
 
@@ -478,6 +478,12 @@ async function updateRecipeStatus(req, res) {
 
     try {
         const doc = await Recipe.findById(recipeId);
+
+        if (role === 'chef' && new ObjectId(userId).equals(doc.author)) {
+            return res.status(401).json({
+                message: 'You are unauthorized to update this recipe status',
+            });
+        }
 
         doc.status = status;
 
@@ -493,7 +499,6 @@ async function updateRecipeStatus(req, res) {
     }
 }
 
-// TODO: Also delete recipe image from cloudinary
 async function deleteRecipe(req, res) {
     const { recipeId: paramId } = req.params;
     const { recipeId: queryId } = req.query;
@@ -506,13 +511,15 @@ async function deleteRecipe(req, res) {
     }
 
     try {
-        const doc = await Recipe.findById(recipeId);
+        const { author, imgId } = await Recipe.findById(recipeId);
 
         if (
             (role === 'admin' && doc.status === 'rejected') ||
-            (role === 'chef' && new ObjectId(userId).equals(doc.author))
+            (role === 'chef' && new ObjectId(userId).equals(author))
         ) {
             const result = await Recipe.deleteOne({ _id: recipeId });
+
+            await cloudinary.uploader.destroy(imgId);
 
             res.json({ message: 'Successfully deleted.', data: result });
         } else {
