@@ -3,9 +3,9 @@ const crypto = require('crypto');
 const cloudinary = require('cloudinary').v2;
 
 async function uploadImage(req, res, next) {
-    // If it's recipe update request and no photo has been updated then move to next middleware
-    if (req.path.includes('/recipes/update-recipe') && !req.file) {
-        next();
+    // If it's recipe edit request and no photo has been updated then move to next middleware
+    if (req.path.includes('/edit-recipe') && !req.file) {
+        return next(); // Add return here
     } else if (!req.file) {
         return res.status(400).json({ message: 'No payload found.' });
     }
@@ -31,7 +31,7 @@ async function uploadImage(req, res, next) {
             // Generate public_id
             const randomID = crypto.randomBytes(16).toString('hex');
             public_id = `${userId}-${randomID}`;
-        } else if (req.path.includes('/update-recipe')) {
+        } else if (req.path.includes('/edit-recipe')) {
             folder += '/recipe-pictures';
             public_id = imgId;
 
@@ -58,7 +58,7 @@ async function uploadImage(req, res, next) {
 
         next();
     } catch (error) {
-        console.log(error);
+        console.log('Error in uploadImage:', error);
         // Ensure cleaning up the temporary file even if an error occurs
         if (fs.existsSync(imgPath)) {
             fs.unlinkSync(imgPath);
