@@ -362,109 +362,6 @@ async function editRecipe(req, res) {
     }
 }
 
-async function getRecipeRatings(req, res) {
-    // Extract and parse query parameters
-    const {
-        p,
-        page = 1,
-        l,
-        limit = process.env.RECIPES_PER_PAGE,
-        data_filter,
-        order = 'desc',
-        include = '',
-        exclude = '',
-    } = req.query;
-
-    // Parse data filter and set pagination parameters
-    const parsedDataFilter = data_filter
-        ? JSON.parse(decodeURIComponent(data_filter))
-        : {};
-    const _page = Math.max(0, parseInt(p || page) - 1); // Ensure page is not negative
-    const _limit = Math.max(1, parseInt(l || limit)); // Ensure limit is at least 1
-
-    // Validate MongoDB IDs if present in the filter
-    if (parsedDataFilter?.recipeId) {
-        if (!validateMongoDBId(parsedDataFilter.recipeId, res)) {
-            return;
-        }
-    }
-    if (parsedDataFilter?.studentId) {
-        if (!validateMongoDBId(parsedDataFilter.studentId, res)) {
-            return;
-        }
-    }
-
-    // Create projection object based on include/exclude parameters
-    const projection = createProjectionObject(include, exclude);
-
-    // Initialize aggregation pipeline
-    const pipeline = [
-        { $sort: { rating: order === 'desc' ? -1 : 1 } },
-        { $skip: _page * _limit },
-        { $limit: _limit },
-    ];
-
-    // Add $match stage if filters are provided
-    if (Object.keys(parsedDataFilter).length > 0) {
-        const match = {};
-        if (parsedDataFilter.recipeId)
-            match.recipeId = new ObjectId(parsedDataFilter.recipeId);
-        if (parsedDataFilter.studentId)
-            match.studentId = new ObjectId(parsedDataFilter.studentId);
-        if (Object.keys(match).length > 0) pipeline.unshift({ $match: match });
-    }
-
-    // Add $lookup stage if username or userImg is requested
-    if (include.includes('username') || include.includes('userImg')) {
-        pipeline.push(
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'studentId',
-                    foreignField: '_id',
-                    as: 'userDetails',
-                },
-            },
-            {
-                $addFields: {
-                    ...(include.includes('username') && {
-                        username: { $arrayElemAt: ['$userDetails.name', 0] },
-                    }),
-                    ...(include.includes('userImg') && {
-                        userImg: { $arrayElemAt: ['$userDetails.img', 0] },
-                    }),
-                },
-            },
-            { $project: { userDetails: 0 } } // Remove userDetails array after extracting required fields
-        );
-    }
-
-    // Add projection stage if needed
-    if (Object.keys(projection).length > 0) {
-        pipeline.push({ $project: projection });
-    }
-
-    try {
-        // Execute aggregation pipeline and count total documents concurrently
-        const [ratings, totalRatings] = await Promise.all([
-            Rating.aggregate(pipeline),
-            Rating.countDocuments(parsedDataFilter),
-        ]);
-
-        // Send response with ratings data and metadata
-        res.json({
-            data: ratings,
-            meta: {
-                page: getCurrPage(_page + 1, _limit, totalRatings),
-                totalCount: totalRatings,
-            },
-        });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-}
-
 async function updateRecipeStatus(req, res) {
     const { recipeId: paramId } = req.params;
     const { status, recipeId: queryId } = req.query;
@@ -536,6 +433,148 @@ async function deleteRecipe(req, res) {
     }
 }
 
+async function getRecipeRatings(req, res) {
+    // Extract and parse query parameters
+    const { recipeId } = req.params;
+    const {
+        p,
+        page = 1,
+        l,
+        limit = process.env.RECIPES_PER_PAGE,
+        data_filter,
+        order = 'desc',
+        include = '',
+        exclude = '',
+    } = req.query;
+
+    // Parse data filter and set pagination parameters
+    const parsedDataFilter = data_filter
+        ? JSON.parse(decodeURIComponent(data_filter))
+        : {};
+    const _page = Math.max(0, parseInt(p || page) - 1); // Ensure page is not negative
+    const _limit = Math.max(1, parseInt(l || limit)); // Ensure limit is at least 1
+
+    // Add recipeId to parsedDataFilter if exists
+    if (recipeId) {
+        parsedDataFilter.recipeId = recipeId;
+    }
+
+    // Validate MongoDB IDs if present in the filter
+    if (
+        parsedDataFilter?.recipeId &&
+        !validateMongoDBId(parsedDataFilter.recipeId, res)
+    ) {
+        return;
+    }
+    if (
+        parsedDataFilter?.studentId &&
+        !validateMongoDBId(parsedDataFilter.studentId, res)
+    ) {
+        return;
+    }
+
+    // Create projection object based on include/exclude parameters
+    const projection = createProjectionObject(include, exclude);
+
+    // Initialize aggregation pipeline
+    const pipeline = [
+        { $sort: { rating: order === 'desc' ? -1 : 1 } },
+        { $skip: _page * _limit },
+        { $limit: _limit },
+    ];
+
+    // Add $match stage if filters are provided
+    if (Object.keys(parsedDataFilter).length > 0) {
+        const match = {};
+        if (parsedDataFilter.recipeId || recipeId)
+            match.recipeId = new ObjectId(
+                parsedDataFilter.recipeId || recipeId
+            );
+        if (parsedDataFilter.studentId)
+            match.studentId = new ObjectId(parsedDataFilter.studentId);
+        if (Object.keys(match).length > 0) pipeline.unshift({ $match: match });
+    }
+
+    // Add $lookup stage if username or userImg is requested
+    if (include.includes('username') || include.includes('userImg')) {
+        pipeline.push(
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'studentId',
+                    foreignField: '_id',
+                    as: 'userDetails',
+                },
+            },
+            {
+                $addFields: {
+                    ...(include.includes('username') && {
+                        username: { $arrayElemAt: ['$userDetails.name', 0] },
+                    }),
+                    ...(include.includes('userImg') && {
+                        userImg: { $arrayElemAt: ['$userDetails.img', 0] },
+                    }),
+                },
+            },
+            { $project: { userDetails: 0 } } // Remove userDetails array after extracting required fields
+        );
+    }
+
+    // Add projection stage if needed
+    if (Object.keys(projection).length > 0) {
+        pipeline.push({ $project: projection });
+    }
+
+    try {
+        // Execute aggregation pipeline and count total documents concurrently
+        const [ratings, totalRatings] = await Promise.all([
+            Rating.aggregate(pipeline),
+            Rating.countDocuments(parsedDataFilter),
+        ]);
+
+        // Send response with ratings data and metadata
+        res.json({
+            data: ratings,
+            meta: {
+                page: getCurrPage(_page + 1, _limit, totalRatings),
+                totalCount: totalRatings,
+            },
+        });
+    } catch (error) {
+        console.log('Error in getRecipeRatings:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
+    }
+}
+
+async function postRecipeRating(req, res) {
+    const { userId } = req.user;
+    const { recipeId } = req.params;
+    const { rating, message } = req.body;
+
+    try {
+        const result = await Rating.create({
+            recipeId,
+            rating,
+            message,
+            studentId: userId,
+        });
+
+        res.status(201).json({
+            message: 'Successfully created.',
+            data: result,
+        });
+    } catch (error) {
+        console.log('Error in postRecipeRating:', error);
+        res.status(500).json({
+            message: 'Internal server error',
+            error: error.message,
+        });
+    }
+}
+
 module.exports = {
     getRecipe,
     postRecipe,
@@ -544,4 +583,5 @@ module.exports = {
     getRecipeRatings,
     updateRecipeStatus,
     deleteRecipe,
+    postRecipeRating,
 };
