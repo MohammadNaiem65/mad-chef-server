@@ -495,28 +495,32 @@ async function getRecipeRatings(req, res) {
         if (Object.keys(match).length > 0) pipeline.unshift({ $match: match });
     }
 
-    // Add $lookup stage if username or userImg is requested
-    if (include.includes('username') || include.includes('userImg')) {
+    // Add $lookup stage if studentName or studentImg is requested
+    if (include.includes('studentName') || include.includes('studentImg')) {
         pipeline.push(
             {
                 $lookup: {
-                    from: 'users',
+                    from: 'students',
                     localField: 'studentId',
                     foreignField: '_id',
-                    as: 'userDetails',
+                    as: 'studentDetails',
                 },
             },
             {
                 $addFields: {
-                    ...(include.includes('username') && {
-                        username: { $arrayElemAt: ['$userDetails.name', 0] },
+                    ...(include.includes('studentName') && {
+                        studentName: {
+                            $arrayElemAt: ['$studentDetails.name', 0],
+                        },
                     }),
-                    ...(include.includes('userImg') && {
-                        userImg: { $arrayElemAt: ['$userDetails.img', 0] },
+                    ...(include.includes('studentImg') && {
+                        studentImg: {
+                            $arrayElemAt: ['$studentDetails.img', 0],
+                        },
                     }),
                 },
             },
-            { $project: { userDetails: 0 } } // Remove userDetails array after extracting required fields
+            { $project: { studentDetails: 0 } } // Remove studentDetails array after extracting required fields
         );
     }
 
