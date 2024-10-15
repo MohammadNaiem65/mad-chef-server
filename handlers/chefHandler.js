@@ -25,7 +25,6 @@ router.get(['/chef/:chefId', '/:chefId'], getChef);
 router.get(
     ['/chef/:chefId/reviews', '/:chefId/reviews'],
     checkAuth,
-    checkChef,
     getChefReviews
 );
 router.post(

@@ -164,6 +164,10 @@ async function getChefReviews(req, res) {
         exclude = '',
     } = req.query;
 
+    if (!validateMongoDBId(chefId, res)) {
+        return;
+    }
+
     // Ensure page and limit are positive integers
     const _page = Math.max(0, parseInt(p || page) - 1);
     const _limit = Math.max(1, parseInt(l || limit));
@@ -227,21 +231,34 @@ async function createChefReview(req, res) {
     try {
         const student = await Student.findById(studentId).select('pkg');
 
-        if (student?.pkg === 'pro') {
-            const result = await ChefReview.create({
-                chefId,
-                studentId,
-                rating,
-                message,
-            });
-
-            res.json({ message: 'Successful', data: result });
-        } else {
-            res.status(400).json({
+        // Check if student is a pro user
+        if (student?.pkg !== 'pro') {
+            return res.status(400).json({
                 message: 'Only pro users can give chef reviews.',
             });
         }
+        // Check if the user has already reviewed the chef
+        const ratingExists = await ChefReview.exists({
+            chefId: new ObjectId(chefId),
+            studentId: new ObjectId(studentId),
+        });
+
+        if (ratingExists) {
+            return res.status(400).json({
+                message: 'You have already given a review to this chef.',
+            });
+        }
+
+        const result = await ChefReview.create({
+            chefId,
+            studentId,
+            rating,
+            message,
+        });
+
+        res.json({ message: 'Successful', data: result });
     } catch (err) {
+        console.error('Error in getChef:', err);
         if (err?.code === 11000) {
             res.status(400).json({
                 message: 'You have already given a review to this chef.',
