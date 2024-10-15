@@ -26,8 +26,23 @@ const chefReviewSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-// Indexing studentId and chefId fields so that they remain always unique
-chefReviewSchema.index({ studentId: 1, chefId: 1 }, { unique: true });
+// Add a pre-save hook to check for duplicate entries
+chefReviewSchema.pre('save', async function (next) {
+    const existingReview = await this.constructor.findOne({
+        studentId: this.studentId,
+        chefId: this.chefId,
+    });
+
+    if (existingReview) {
+        const error = new Error(
+            'A review for this student and chef combination already exists.'
+        );
+        error.status = 400;
+        return next(error);
+    }
+
+    next();
+});
 
 const ChefReview = mongoose.model('ChefReview', chefReviewSchema);
 
