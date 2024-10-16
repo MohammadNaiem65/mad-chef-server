@@ -279,7 +279,10 @@ async function updateChefData(req, res) {
     }
 
     try {
-        const result = await Chef.updateOne({ _id: userId }, data);
+        const result = await Chef.findOneAndUpdate({ _id: userId }, data, {
+            new: true,
+            runValidators: true,
+        });
 
         res.json({
             data: result,
@@ -287,7 +290,7 @@ async function updateChefData(req, res) {
         });
     } catch (error) {
         console.log(error);
-        res.json(error);
+        res.json(error.message);
     }
 }
 
