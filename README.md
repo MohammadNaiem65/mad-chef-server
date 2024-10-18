@@ -10,13 +10,14 @@
 2. [Technologies](#technologies)
 3. [Structure](#structure)
 4. [API Documentation](#api-documentation)
-5. [Feedback Or Contribute](#feedback-or-contribute)
+5. [Demo](#demo)
+6. [Feedback Or Contribute](#feedback-or-contribute)
 
 ## Introduction
 
 [Mad Chef](https://mad-chef.web.app/) is a Recipe sharing website where Users and Chefs meets and shares their expertise to help the Users to improve their cooking skills.
 
-For more info, visit: https://github.com/MohammadNaiem65/mad-chef-client
+For more info about the client side, visit: _[Here](https://github.com/MohammadNaiem65/mad-chef-client)_ or _https://github.com/MohammadNaiem65/mad-chef-client_
 
 ## Technologies
 
@@ -57,6 +58,10 @@ The endpoint roots are listed below:
 -   `/newsletter` - Newsletter related endpoints
 
 \***_Detailed Documentation is available [here](https://github.com/MohammadNaiem65/mad-chef-server/tree/main/docs)_**
+
+## Demo
+
+A live demo of this project can be found here: _[Live Demo](https://mad-chef-server.vercel.app/)_ or _https://mad-chef-server.vercel.app/_
 
 ## Feedback Or Contribute
 
