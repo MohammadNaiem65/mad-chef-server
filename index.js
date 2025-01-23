@@ -72,6 +72,15 @@ app.use('/payments', paymentHandler);
 app.use('/roles', roleHandler);
 app.use('/newsletter', newsletterHandler);
 
+// Error handler
+app.use((err, req, res, next) => {
+    if (err.status) {
+        res.status(err.status).json({ message: err?.message });
+        return;
+    }
+    res.status(500).json({ error: err.message });
+});
+
 // Listen app
 app.listen(port, () => {
     console.log(`App listening on port ${port}`);
