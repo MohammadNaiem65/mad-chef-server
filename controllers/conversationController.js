@@ -2,6 +2,38 @@ const { default: mongoose, isValidObjectId } = require('mongoose');
 const Conversation = require('../models/Conversation');
 const { ObjectId } = mongoose.Types;
 
+// Get all conversations for a user
+const getConversations = async (req, res, next) => {
+    const {
+        p,
+        page = 1,
+        l,
+        limit = process.env.CONVERSATION_PER_PAGE,
+    } = req.query;
+
+    const _page = Math.max(0, parseInt(p || page) - 1);
+    const _limit = Math.max(1, parseInt(l || limit));
+
+    try {
+        const userId = req.user.uid;
+
+        const conversations = await Conversation.find({
+            participants: { $in: [userId] },
+        })
+            .sort({ updatedAt: -1 })
+            .skip(_page * _limit)
+            .limit(_limit);
+
+        res.send({
+            data: conversations,
+        });
+    } catch (error) {
+        next({ error });
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Update conversation
 const updateConversation = async (req, res, next) => {
     const { message, participant } = req.body || {};
     const { conversationId } = req.params;
@@ -56,4 +88,4 @@ const updateConversation = async (req, res, next) => {
     }
 };
 
-module.exports = { updateConversation };
+module.exports = { getConversations, updateConversation };
